@@ -1,0 +1,34 @@
+{
+  "posts": [
+    {
+      "subreddit": "netsec",
+      "title": "Analysis of exploitation attempts against CVE-2024-3400",
+      "selftext": "Researchers observed scanning and exploitation attempts targeting GlobalProtect portals. Defenders should review logs for suspicious command execution and map activity to T1190.",
+      "url": "https://www.reddit.com/r/netsec/comments/sample1/analysis_of_exploitation_attempts_against_cve/",
+      "permalink": "/r/netsec/comments/sample1/analysis_of_exploitation_attempts_against_cve/",
+      "created_utc": 1713000000,
+      "score": 248,
+      "num_comments": 42
+    },
+    {
+      "subreddit": "cybersecurity",
+      "title": "MOVEit incident lessons for defenders",
+      "selftext": "Teams are discussing CVE-2023-34362, data theft risk, exposed file transfer services, and incident response playbooks.",
+      "url": "https://www.reddit.com/r/cybersecurity/comments/sample2/moveit_incident_lessons/",
+      "permalink": "/r/cybersecurity/comments/sample2/moveit_incident_lessons/",
+      "created_utc": 1713086400,
+      "score": 182,
+      "num_comments": 31
+    },
+    {
+      "subreddit": "blueteamsec",
+      "title": "Detection ideas for Log4Shell callbacks",
+      "selftext": "Blue teams still monitor CVE-2021-44228 probes, suspicious LDAP callbacks, and outbound connections from Java workloads.",
+      "url": "https://www.reddit.com/r/blueteamsec/comments/sample3/log4shell_detection_ideas/",
+      "permalink": "/r/blueteamsec/comments/sample3/log4shell_detection_ideas/",
+      "created_utc": 1713172800,
+      "score": 96,
+      "num_comments": 15
+    }
+  ]
+}

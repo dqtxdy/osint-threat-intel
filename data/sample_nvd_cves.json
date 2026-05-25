@@ -1,0 +1,32 @@
+{
+  "CVE-2024-3400": {
+    "description": "A command injection vulnerability in Palo Alto Networks PAN-OS GlobalProtect gateway and portal may allow an unauthenticated attacker to execute arbitrary code.",
+    "severity": "CRITICAL",
+    "cvss_score": 10.0,
+    "published": "2024-04-12T17:15:00.000",
+    "last_modified": "2024-05-01T18:35:00.000",
+    "references": [
+      "https://security.paloaltonetworks.com/CVE-2024-3400"
+    ]
+  },
+  "CVE-2023-34362": {
+    "description": "A SQL injection vulnerability in Progress MOVEit Transfer may allow unauthenticated attackers to gain unauthorized access to MOVEit Transfer databases.",
+    "severity": "CRITICAL",
+    "cvss_score": 9.8,
+    "published": "2023-06-02T14:15:00.000",
+    "last_modified": "2024-02-01T18:15:00.000",
+    "references": [
+      "https://community.progress.com/s/article/MOVEit-Transfer-Critical-Vulnerability-31May2023"
+    ]
+  },
+  "CVE-2021-44228": {
+    "description": "Apache Log4j2 JNDI features do not protect against attacker-controlled LDAP and other JNDI related endpoints, allowing remote code execution.",
+    "severity": "CRITICAL",
+    "cvss_score": 10.0,
+    "published": "2021-12-10T10:15:00.000",
+    "last_modified": "2023-02-03T16:15:00.000",
+    "references": [
+      "https://logging.apache.org/log4j/2.x/security.html"
+    ]
+  }
+}
