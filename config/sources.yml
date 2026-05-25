@@ -1,0 +1,63 @@
+rss:
+  - id: the_hacker_news
+    name: The Hacker News
+    url: https://feeds.feedburner.com/TheHackersNews
+    language_hint: en
+    source_type: news
+  - id: bleepingcomputer
+    name: BleepingComputer
+    url: https://www.bleepingcomputer.com/feed/
+    language_hint: en
+    source_type: news
+  - id: krebs_on_security
+    name: KrebsOnSecurity
+    url: https://krebsonsecurity.com/feed/
+    language_hint: en
+    source_type: news
+  - id: cert_fr
+    name: CERT-FR
+    url: https://www.cert.ssi.gouv.fr/feed/
+    language_hint: fr
+    source_type: cert
+  - id: jpcert
+    name: JPCERT/CC
+    url: https://www.jpcert.or.jp/rss/jpcert.rdf
+    language_hint: ja
+    source_type: cert
+
+cisa_kev:
+  id: cisa_kev
+  name: CISA Known Exploited Vulnerabilities
+  url: https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+  mirror_urls:
+    - https://raw.githubusercontent.com/cisagov/kev-data/develop/known_exploited_vulnerabilities.json
+  fallback_path: data/sample_cisa_kev.json
+  source_type: structured_feed
+
+reddit:
+  id: reddit_security
+  name: Reddit Security Communities
+  source_type: social
+  token_url: https://www.reddit.com/api/v1/access_token
+  api_base_url: https://oauth.reddit.com
+  public_base_url: https://www.reddit.com
+  subreddits:
+    - netsec
+    - cybersecurity
+    - blueteamsec
+    - threatintel
+    - malware
+  limit_per_subreddit: 25
+  fallback_path: data/sample_reddit_security.json
+
+nvd:
+  id: nvd
+  name: National Vulnerability Database
+  api_url: https://services.nvd.nist.gov/rest/json/cves/2.0
+  timeout: 8
+  fallback_path: data/sample_nvd_cves.json
+
+mitre_attack:
+  id: mitre_attack
+  name: MITRE ATT&CK
+  fallback_path: data/sample_attack_techniques.json

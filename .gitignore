@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+data/cti.sqlite3
+data/processed/
+data/raw/
+neo4j_data/
+neo4j_logs/
+frontend/node_modules/
+frontend/dist/
+data/backups/
