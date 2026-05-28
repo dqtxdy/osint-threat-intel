@@ -241,6 +241,22 @@ class SQLiteStore:
                 )
             )
 
+    def document_entities(self, document_id: int, limit: int = 25) -> list[sqlite3.Row]:
+        with self.connect() as connection:
+            return list(
+                connection.execute(
+                    """
+                    SELECT e.entity_type, e.normalized_value, de.evidence, de.confidence
+                    FROM entities e
+                    JOIN document_entities de ON de.entity_id = e.id
+                    WHERE de.document_id = ?
+                    ORDER BY e.entity_type, e.normalized_value
+                    LIMIT ?
+                    """,
+                    (document_id, limit),
+                )
+            )
+
     def co_occurring_entities(self, entity_type: str, normalized_value: str, limit: int = 25) -> list[sqlite3.Row]:
         with self.connect() as connection:
             return list(
