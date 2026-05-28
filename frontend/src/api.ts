@@ -41,7 +41,7 @@ export const api = {
     return response.text();
   },
   runPipeline: async (days: number) => {
-    const response = await fetch(`${API_BASE}/api/run-pipeline?days=${days}&source=all`, { method: "POST" });
+    const response = await fetch(`${API_BASE}/api/run-pipeline?days=${days}&source=all&live_only=true&fresh=false&enrich_limit=8`, { method: "POST" });
     if (!response.ok) throw new Error(await response.text());
     return response.json() as Promise<Record<string, unknown>>;
   },

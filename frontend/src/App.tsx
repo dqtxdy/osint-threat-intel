@@ -114,11 +114,11 @@ export default function App() {
   }
 
   async function runPipeline() {
-    setNotice("Pipeline running...");
+    setNotice("Live OSINT update running...");
     try {
       await api.runPipeline(DAYS);
       await refresh();
-      setNotice("Pipeline complete.");
+      setNotice("Live OSINT update complete.");
     } catch (error) {
       setNotice(String(error));
     }
@@ -177,7 +177,7 @@ export default function App() {
               </button>
               <button onClick={runPipeline} className="flex items-center gap-2 rounded-lg bg-cyanx px-3 py-2 text-sm font-semibold text-ink hover:bg-sky-300">
                 <Play className="h-4 w-4" />
-                Run Pipeline
+                Run Live Update
               </button>
             </div>
           </div>
@@ -725,7 +725,7 @@ function PipelineStatusPage({ health, overview, onRun }: { health: Health | null
         </div>
         <button onClick={onRun} className="mt-5 flex items-center gap-2 rounded-lg bg-cyanx px-3 py-2 text-sm font-semibold text-ink hover:bg-sky-300">
           <Play className="h-4 w-4" />
-          Run Full Pipeline
+          Run Live Update
         </button>
       </Panel>
       <Panel title="Current Data Coverage">
