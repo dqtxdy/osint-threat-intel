@@ -590,7 +590,7 @@ function GraphPage({
   onSelect: (entity: EntitySummary) => void;
   graph: GraphData | null;
 }) {
-  const [relationshipFilter, setRelationshipFilter] = useState("all");
+  const [relationshipFilter, setRelationshipFilter] = useState("overview");
   const evidenceDocs = graph?.nodes.filter((node) => node.kind === "document").length ?? 0;
   const relatedEntities = graph?.nodes.filter((node) => node.kind === "related_entity").length ?? 0;
 
@@ -811,16 +811,16 @@ function KnowledgeGraph({
   onRelationshipFilter: (value: string) => void;
   onFocusEntity: (node: GraphNode) => void;
 }) {
-  const width = 1280;
-  const height = 650;
+  const width = 1500;
   const relationshipOptions = [
+    { value: "overview", label: "Overview" },
+    { value: "evidence", label: "Evidence" },
+    { value: "related", label: "Related" },
+    { value: "mentions", label: "Mentions" },
     { value: "all", label: "All" },
-    { value: "PUBLISHED", label: "Published" },
-    { value: "MENTIONS", label: "Mentions" },
-    { value: "CO_OCCURS", label: "Co-occurs" },
   ];
   const visibleEdges = useMemo(
-    () => graph.edges.filter((edge) => relationshipFilter === "all" || edge.relationship === relationshipFilter),
+    () => graph.edges.filter((edge) => edgeVisibleInGraph(edge, relationshipFilter)),
     [graph.edges, relationshipFilter],
   );
   const visibleNodeIds = useMemo(() => {
@@ -832,7 +832,14 @@ function KnowledgeGraph({
     return ids;
   }, [visibleEdges]);
   const visibleNodes = useMemo(() => graph.nodes.filter((node) => visibleNodeIds.has(node.id)), [graph.nodes, visibleNodeIds]);
-  const positions = useMemo(() => layoutGraphNodes(visibleNodes, width, height), [visibleNodes]);
+  const maxLayerCount = Math.max(
+    1,
+    visibleNodes.filter((node) => node.kind === "source").length,
+    visibleNodes.filter((node) => node.kind === "document").length,
+    visibleNodes.filter((node) => node.kind === "related_entity").length,
+  );
+  const height = Math.max(640, maxLayerCount * 92 + 150);
+  const positions = useMemo(() => layoutGraphNodes(visibleNodes, width, height), [visibleNodes, height]);
   const [activeNodeId, setActiveNodeId] = useState("selected");
   const [activeEdgeId, setActiveEdgeId] = useState("");
 
@@ -846,7 +853,25 @@ function KnowledgeGraph({
   const activeNode = visibleNodes.find((node) => node.id === activeNodeId) ?? visibleNodes.find((node) => node.id === "selected");
   const activeEdge = visibleEdges.find((edge) => edgeKey(edge) === activeEdgeId);
   const connectedEdges = activeNode ? visibleEdges.filter((edge) => edge.source === activeNode.id || edge.target === activeNode.id) : [];
-  const connectedNodeIds = new Set<string>(connectedEdges.flatMap((edge) => [edge.source, edge.target]));
+  const contextEdgeKeys = new Set<string>();
+  const connectedNodeIds = new Set<string>();
+  if (activeEdge) {
+    contextEdgeKeys.add(edgeKey(activeEdge));
+    connectedNodeIds.add(activeEdge.source);
+    connectedNodeIds.add(activeEdge.target);
+  } else if (activeNode?.id === "selected") {
+    visibleEdges.forEach((edge) => {
+      contextEdgeKeys.add(edgeKey(edge));
+      connectedNodeIds.add(edge.source);
+      connectedNodeIds.add(edge.target);
+    });
+  } else {
+    connectedEdges.forEach((edge) => {
+      contextEdgeKeys.add(edgeKey(edge));
+      connectedNodeIds.add(edge.source);
+      connectedNodeIds.add(edge.target);
+    });
+  }
   if (activeNode) connectedNodeIds.add(activeNode.id);
 
   return (
@@ -876,7 +901,7 @@ function KnowledgeGraph({
             <Badge tone="amber">Related</Badge>
           </div>
         </div>
-        <svg viewBox={`0 0 ${width} ${height}`} className="h-[680px] w-full">
+        <svg viewBox={`0 0 ${width} ${height}`} className="w-full" style={{ height: Math.min(height, 840) }}>
           <defs>
             <marker id="kg-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
               <path d="M0,0 L0,6 L9,3 z" fill="#64748b" />
@@ -885,29 +910,40 @@ function KnowledgeGraph({
               <path d="M0,0 L0,6 L9,3 z" fill="#0369a1" />
             </marker>
           </defs>
+          <g opacity="0.72">
+            <rect x="34" y="58" width="228" height={height - 96} rx="18" fill="#f8fafc" />
+            <rect x="330" y="58" width="326" height={height - 96} rx="18" fill="#f1f7fb" />
+            <rect x="734" y="58" width="214" height={height - 96} rx="18" fill="#fff7ed" />
+            <rect x="1100" y="58" width="338" height={height - 96} rx="18" fill="#fffbeb" />
+          </g>
           <g fill="#64748b" fontSize="12" fontWeight="800" letterSpacing="0">
-            <text x="120" y="30" textAnchor="middle">
+            <text x="148" y="34" textAnchor="middle">
               OSINT SOURCE
             </text>
-            <text x="430" y="30" textAnchor="middle">
+            <text x="493" y="34" textAnchor="middle">
               EVIDENCE
             </text>
-            <text x="760" y="30" textAnchor="middle">
+            <text x="842" y="34" textAnchor="middle">
               FOCUS ENTITY
             </text>
-            <text x={width - 160} y="30" textAnchor="middle">
+            <text x={width - 210} y="34" textAnchor="middle">
               RELATED INTEL
             </text>
           </g>
           {visibleEdges.map((edge) => {
-            const source = positions[edge.source];
-            const target = positions[edge.target];
-            if (!source || !target) return null;
-            const highlighted = activeEdge ? edgeKey(edge) === edgeKey(activeEdge) : activeNode ? edge.source === activeNode.id || edge.target === activeNode.id : false;
-            const muted = activeNode ? !connectedNodeIds.has(edge.source) || !connectedNodeIds.has(edge.target) : false;
+            const sourceNode = visibleNodes.find((node) => node.id === edge.source);
+            const targetNode = visibleNodes.find((node) => node.id === edge.target);
+            const sourceCenter = positions[edge.source];
+            const targetCenter = positions[edge.target];
+            if (!sourceNode || !targetNode || !sourceCenter || !targetCenter) return null;
+            const source = nodeEdgePoint(sourceNode, sourceCenter, Math.sign(targetCenter.x - sourceCenter.x) || 1);
+            const target = nodeEdgePoint(targetNode, targetCenter, Math.sign(sourceCenter.x - targetCenter.x) || -1);
+            const highlighted = contextEdgeKeys.has(edgeKey(edge));
+            const muted = !highlighted && Boolean(activeNode && activeNode.id !== "selected");
             const path = relationshipPath(source, target);
             const label = edge.label.length > 22 ? truncate(edge.label, 22) : edge.label;
             const labelPosition = relationshipLabelPosition(source, target);
+            const showLabel = edgeKey(edge) === activeEdgeId || (!activeEdgeId && activeNode?.id !== "selected" && highlighted && connectedEdges.length <= 6);
             return (
               <g
                 key={edgeKey(edge)}
@@ -921,16 +957,18 @@ function KnowledgeGraph({
                   d={path}
                   fill="none"
                   stroke={highlighted ? "#0369a1" : "#94a3b8"}
-                  strokeWidth={highlighted ? 2.8 : 1.5}
-                  strokeOpacity={muted && !highlighted ? 0.24 : 0.85}
+                  strokeWidth={highlighted ? 2.6 : 1.2}
+                  strokeOpacity={muted ? 0.14 : highlighted ? 0.78 : 0.36}
                   markerEnd={highlighted ? "url(#kg-arrow-active)" : "url(#kg-arrow)"}
                 />
-                <g transform={`translate(${labelPosition.x}, ${labelPosition.y})`} opacity={muted && !highlighted ? 0.35 : 1}>
-                  <rect x={-(label.length * 3.5 + 11)} y="-12" width={label.length * 7 + 22} height="22" rx="7" fill="#ffffff" stroke="#d8e0ea" />
-                  <text textAnchor="middle" dominantBaseline="middle" fill="#334155" fontSize="11" fontWeight="600">
-                    {label}
-                  </text>
-                </g>
+                {showLabel ? (
+                  <g transform={`translate(${labelPosition.x}, ${labelPosition.y})`}>
+                    <rect x={-(label.length * 3.5 + 11)} y="-12" width={label.length * 7 + 22} height="22" rx="7" fill="#ffffff" stroke="#d8e0ea" />
+                    <text textAnchor="middle" dominantBaseline="middle" fill="#334155" fontSize="11" fontWeight="600">
+                      {label}
+                    </text>
+                  </g>
+                ) : null}
               </g>
             );
           })}
@@ -938,7 +976,7 @@ function KnowledgeGraph({
             const pos = positions[node.id];
             if (!pos) return null;
             const active = node.id === activeNode?.id;
-            const muted = activeNode ? !connectedNodeIds.has(node.id) : false;
+            const muted = Boolean(activeNode && activeNode.id !== "selected" && !connectedNodeIds.has(node.id));
             return (
               <GraphSvgNode
                 key={node.id}
@@ -977,17 +1015,34 @@ function GraphSvgNode({
   onClick: () => void;
 }) {
   const color = graphNodeColor(node);
-  const label = truncate(node.label, node.kind === "document" ? 34 : 24);
-  const typeLabel = node.kind === "selected_entity" ? node.type : node.kind === "related_entity" ? node.type : node.kind ?? node.type;
+  const label = truncate(node.label, node.kind === "document" ? 38 : node.kind === "related_entity" ? 22 : 24);
+  const typeLabel = node.kind === "selected_entity" ? node.type : node.kind === "related_entity" ? node.entity_type ?? node.type : node.kind ?? node.type;
   if (node.kind === "document") {
     return (
       <g className="cursor-pointer" opacity={muted ? 0.36 : 1} onClick={onClick}>
-        <rect x={x - 112} y={y - 34} width="224" height="68" rx="12" fill="#ffffff" stroke={color} strokeWidth={active ? 3 : 1.7} />
+        <rect x={x - 132} y={y - 34} width="264" height="68" rx="12" fill="#ffffff" stroke={color} strokeWidth={active ? 3 : 1.7} />
         <text x={x} y={y - 8} textAnchor="middle" fill="#0f172a" fontSize="12" fontWeight="700">
           {label}
         </text>
         <text x={x} y={y + 13} textAnchor="middle" fill="#475569" fontSize="10" fontWeight="600">
           DOCUMENT · {node.source_name ? truncate(node.source_name, 22) : "evidence"}
+        </text>
+      </g>
+    );
+  }
+  if (node.kind === "related_entity") {
+    return (
+      <g className="cursor-pointer" opacity={muted ? 0.32 : 1} onClick={onClick}>
+        <rect x={x - 98} y={y - 28} width="196" height="56" rx="12" fill="#ffffff" stroke={color} strokeWidth={active ? 3 : 1.6} />
+        <circle cx={x - 70} cy={y} r="17" fill={`${color}18`} stroke={color} strokeWidth="1.5" />
+        <text x={x - 70} y={y + 3} textAnchor="middle" fill={color} fontSize="8.5" fontWeight="800">
+          {nodeIconText(node)}
+        </text>
+        <text x={x - 42} y={y - 4} fill="#0f172a" fontSize="12" fontWeight="800">
+          {label}
+        </text>
+        <text x={x - 42} y={y + 15} fill="#475569" fontSize="10" fontWeight="700">
+          {truncate(formatGraphType(typeLabel), 22)}
         </text>
       </g>
     );
@@ -1004,7 +1059,7 @@ function GraphSvgNode({
         {label}
       </text>
       <text x={x} y={y + 27} textAnchor="middle" fill="#475569" fontSize="10" fontWeight="700">
-        {typeLabel?.toUpperCase()}
+        {formatGraphType(typeLabel).toUpperCase()}
       </text>
     </g>
   );
@@ -1029,7 +1084,7 @@ function GraphInspector({
     <div className="rounded-xl border border-line bg-panel p-4 shadow-glow">
       <div className="mb-4 flex items-center justify-between gap-3">
         <h3 className="text-base font-semibold text-slate-100">{edge ? "Relationship" : "Node"} Inspector</h3>
-        {node ? <Badge tone={graphNodeTone(node)}>{node.kind ?? node.type}</Badge> : null}
+        {node ? <Badge tone={graphNodeTone(node)}>{formatGraphType(node.kind ?? node.type)}</Badge> : null}
       </div>
       {edge && source && target ? (
         <div className="mb-4 rounded-lg border border-cyanx/25 bg-cyanx/5 p-3">
@@ -1043,7 +1098,7 @@ function GraphInspector({
       {node ? (
         <div className="space-y-4">
           <div>
-            <div className="text-xs uppercase tracking-wide text-slate-500">{node.type}</div>
+            <div className="text-xs uppercase tracking-wide text-slate-500">{formatGraphType(node.type)}</div>
             <div className="mt-1 text-lg font-semibold text-slate-100">{node.title ?? node.label}</div>
             {node.description ? <p className="mt-2 line-clamp-5 text-sm leading-relaxed text-slate-400">{node.description}</p> : null}
           </div>
@@ -1096,6 +1151,16 @@ function GraphInspector({
   );
 }
 
+function edgeVisibleInGraph(edge: GraphEdge, filter: string) {
+  if (filter === "overview") {
+    return edge.relationship === "PUBLISHED" || edge.relationship === "CO_OCCURS" || (edge.relationship === "MENTIONS" && edge.target === "selected");
+  }
+  if (filter === "evidence") return edge.relationship === "PUBLISHED" || (edge.relationship === "MENTIONS" && edge.target === "selected");
+  if (filter === "related") return edge.relationship === "CO_OCCURS";
+  if (filter === "mentions") return edge.relationship === "MENTIONS";
+  return true;
+}
+
 function layoutGraphNodes(nodes: GraphNode[], width: number, height: number) {
   const layers: Record<string, GraphNode[]> = {
     source: [],
@@ -1109,10 +1174,10 @@ function layoutGraphNodes(nodes: GraphNode[], width: number, height: number) {
     else layers.related_entity.push(node);
   });
   const positions: Record<string, { x: number; y: number }> = {};
-  distributeLayer(layers.source, 120, height, positions);
-  distributeLayer(layers.document, 430, height, positions);
-  distributeLayer(layers.selected_entity, 760, height, positions, height / 2);
-  distributeLayer(layers.related_entity, width - 160, height, positions);
+  distributeLayer(layers.source, 148, height, positions);
+  distributeLayer(layers.document, 493, height, positions);
+  distributeLayer(layers.selected_entity, 842, height, positions, height / 2);
+  distributeLayer(layers.related_entity, width - 210, height, positions);
   return positions;
 }
 
@@ -1122,6 +1187,17 @@ function distributeLayer(nodes: GraphNode[], x: number, height: number, position
     const y = fixedY ?? ((index + 1) * height) / (nodes.length + 1);
     positions[node.id] = { x, y: Math.max(58, Math.min(height - 58, y)) };
   });
+}
+
+function nodeEdgePoint(node: GraphNode, position: { x: number; y: number }, direction: number) {
+  return { x: position.x + direction * nodeHorizontalExtent(node), y: position.y };
+}
+
+function nodeHorizontalExtent(node: GraphNode) {
+  if (node.kind === "document") return 132;
+  if (node.kind === "related_entity") return 98;
+  if (node.kind === "selected_entity") return 48;
+  return 36;
 }
 
 function relationshipPath(source: { x: number; y: number }, target: { x: number; y: number }) {
@@ -1155,6 +1231,11 @@ function nodeIconText(node: GraphNode) {
   if (node.kind === "source") return "SRC";
   if (node.kind === "selected_entity") return "FOC";
   return (node.entity_type ?? node.type ?? "ENT").slice(0, 3).toUpperCase();
+}
+
+function formatGraphType(value?: string) {
+  if (!value) return "entity";
+  return value.replace(/_/g, " ");
 }
 
 function relationshipTone(relationship?: string): "slate" | "blue" | "green" | "amber" | "red" {
