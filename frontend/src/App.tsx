@@ -5,6 +5,7 @@ import {
   Boxes,
   Brain,
   Download,
+  ExternalLink,
   FileText,
   GitBranch,
   Globe2,
@@ -21,7 +22,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ElementType, ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { api } from "./api";
-import type { AttackLayer, DocumentItem, EntityDetail, EntitySummary, GraphData, Health, Overview, PriorityFinding, SourceCoverage, TrendSignal } from "./types";
+import type { AttackLayer, DocumentItem, EntityDetail, EntitySummary, GraphData, GraphEdge, GraphNode, Health, Overview, PriorityFinding, SourceCoverage, TrendSignal } from "./types";
 
 type Page = "overview" | "coverage" | "priorities" | "feed" | "workbench" | "graph" | "attack" | "detections" | "reports" | "exports" | "pipeline";
 
@@ -589,25 +590,49 @@ function GraphPage({
   onSelect: (entity: EntitySummary) => void;
   graph: GraphData | null;
 }) {
+  const [relationshipFilter, setRelationshipFilter] = useState("all");
+  const evidenceDocs = graph?.nodes.filter((node) => node.kind === "document").length ?? 0;
+  const relatedEntities = graph?.nodes.filter((node) => node.kind === "related_entity").length ?? 0;
+
+  function focusEntity(node: GraphNode) {
+    if (!node.entity_type || !node.value) return;
+    const existing = entities.find((item) => item.type === node.entity_type && item.value === node.value);
+    onSelect(existing ?? { type: node.entity_type, value: node.value, mentions: node.shared_documents ?? 0 });
+  }
+
   return (
-    <div className="space-y-4">
-      <Panel title="Knowledge Graph">
-        <select
-          value={selected ? `${selected.type}|${selected.value}` : ""}
-          onChange={(event) => {
-            const [type, value] = event.target.value.split("|");
-            const entity = entities.find((item) => item.type === type && item.value === value);
-            if (entity) onSelect(entity);
-          }}
-          className="mb-4 rounded-lg border border-line bg-ink px-3 py-2 text-sm"
-        >
-          {entities.map((entity) => (
-            <option key={`${entity.type}-${entity.value}`} value={`${entity.type}|${entity.value}`}>
-              {entity.type} · {entity.value}
-            </option>
-          ))}
-        </select>
-        {graph ? <NetworkGraph graph={graph} /> : null}
+    <div className="space-y-5">
+      <Panel title="Knowledge Graph Workbench">
+        <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
+          <select
+            value={selected ? `${selected.type}|${selected.value}` : ""}
+            onChange={(event) => {
+              const [type, value] = event.target.value.split("|");
+              const entity = entities.find((item) => item.type === type && item.value === value);
+              if (entity) onSelect(entity);
+            }}
+            className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm"
+          >
+            {entities.map((entity) => (
+              <option key={`${entity.type}-${entity.value}`} value={`${entity.type}|${entity.value}`}>
+                {entity.type} · {entity.value}
+              </option>
+            ))}
+          </select>
+          <div className="flex flex-wrap gap-2">
+            <Badge tone="blue">{evidenceDocs} evidence docs</Badge>
+            <Badge tone="green">{relatedEntities} related entities</Badge>
+            <Badge tone="amber">{graph?.edges.length ?? 0} relationships</Badge>
+          </div>
+        </div>
+        {graph ? (
+          <KnowledgeGraph
+            graph={graph}
+            relationshipFilter={relationshipFilter}
+            onRelationshipFilter={setRelationshipFilter}
+            onFocusEntity={focusEntity}
+          />
+        ) : null}
       </Panel>
     </div>
   );
@@ -775,100 +800,375 @@ function StatusLine({ label, value }: { label: string; value: string }) {
   );
 }
 
-function NetworkGraph({ graph }: { graph: GraphData }) {
-  const width = 1100;
-  const height = 560;
-  const centerX = width / 2;
-  const centerY = height / 2;
-  const [focusedNode, setFocusedNode] = useState(graph.nodes[0]?.id ?? "");
-  useEffect(() => {
-    if (graph.nodes.length && !graph.nodes.some((node) => node.id === focusedNode)) {
-      setFocusedNode(graph.nodes[0].id);
-    }
-  }, [graph.nodes, focusedNode]);
-
-  const focused = graph.nodes.find((node) => node.id === focusedNode) ?? graph.nodes[0];
-  const linkedNodeIds = useMemo(() => {
-    if (!focusedNode) return new Set<string>();
-    const ids = new Set<string>([focusedNode]);
-    graph.edges.forEach((edge) => {
-      if (edge.source === focusedNode) ids.add(edge.target);
-      if (edge.target === focusedNode) ids.add(edge.source);
+function KnowledgeGraph({
+  graph,
+  relationshipFilter,
+  onRelationshipFilter,
+  onFocusEntity,
+}: {
+  graph: GraphData;
+  relationshipFilter: string;
+  onRelationshipFilter: (value: string) => void;
+  onFocusEntity: (node: GraphNode) => void;
+}) {
+  const width = 1280;
+  const height = 650;
+  const relationshipOptions = [
+    { value: "all", label: "All" },
+    { value: "PUBLISHED", label: "Published" },
+    { value: "MENTIONS", label: "Mentions" },
+    { value: "CO_OCCURS", label: "Co-occurs" },
+  ];
+  const visibleEdges = useMemo(
+    () => graph.edges.filter((edge) => relationshipFilter === "all" || edge.relationship === relationshipFilter),
+    [graph.edges, relationshipFilter],
+  );
+  const visibleNodeIds = useMemo(() => {
+    const ids = new Set<string>(["selected"]);
+    visibleEdges.forEach((edge) => {
+      ids.add(edge.source);
+      ids.add(edge.target);
     });
     return ids;
-  }, [focusedNode, graph.edges]);
-  const positions = graph.nodes.reduce<Record<string, { x: number; y: number }>>((acc, node, index) => {
-    if (node.id === "selected") {
-      acc[node.id] = { x: centerX, y: centerY };
-    } else {
-      const angle = (Math.PI * 2 * index) / Math.max(1, graph.nodes.length - 1);
-      const radius = node.type === "document" ? 190 : 260;
-      acc[node.id] = { x: centerX + Math.cos(angle) * radius, y: centerY + Math.sin(angle) * radius };
+  }, [visibleEdges]);
+  const visibleNodes = useMemo(() => graph.nodes.filter((node) => visibleNodeIds.has(node.id)), [graph.nodes, visibleNodeIds]);
+  const positions = useMemo(() => layoutGraphNodes(visibleNodes, width, height), [visibleNodes]);
+  const [activeNodeId, setActiveNodeId] = useState("selected");
+  const [activeEdgeId, setActiveEdgeId] = useState("");
+
+  useEffect(() => {
+    if (!visibleNodes.some((node) => node.id === activeNodeId)) {
+      setActiveNodeId("selected");
+      setActiveEdgeId("");
     }
-    return acc;
-  }, {});
+  }, [visibleNodes, activeNodeId]);
+
+  const activeNode = visibleNodes.find((node) => node.id === activeNodeId) ?? visibleNodes.find((node) => node.id === "selected");
+  const activeEdge = visibleEdges.find((edge) => edgeKey(edge) === activeEdgeId);
+  const connectedEdges = activeNode ? visibleEdges.filter((edge) => edge.source === activeNode.id || edge.target === activeNode.id) : [];
+  const connectedNodeIds = new Set<string>(connectedEdges.flatMap((edge) => [edge.source, edge.target]));
+  if (activeNode) connectedNodeIds.add(activeNode.id);
+
   return (
-    <div className="overflow-hidden rounded-xl border border-line bg-ink/50">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
-        <div className="min-w-0">
-          <div className="text-xs uppercase tracking-wide text-slate-500">{focused?.type ?? "node"}</div>
-          <div className="truncate text-sm font-semibold text-slate-100">{focused?.label ?? "Select a node"}</div>
+    <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
+      <div className="overflow-hidden rounded-xl border border-line bg-panel">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
+          <div className="flex flex-wrap gap-2">
+            {relationshipOptions.map((option) => (
+              <button
+                key={option.value}
+                onClick={() => {
+                  onRelationshipFilter(option.value);
+                  setActiveEdgeId("");
+                }}
+                className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
+                  relationshipFilter === option.value ? "border-cyanx bg-cyanx/10 text-cyanx" : "border-line bg-ink/50 text-slate-500 hover:bg-ink"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge tone="green">Source</Badge>
+            <Badge tone="blue">Document</Badge>
+            <Badge tone="red">Focus</Badge>
+            <Badge tone="amber">Related</Badge>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge tone="green">source</Badge>
-          <Badge tone="blue">document</Badge>
-          <Badge tone="amber">entity</Badge>
-        </div>
-      </div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="h-[560px] w-full">
-        {graph.edges.map((edge, index) => {
-          const source = positions[edge.source];
-          const target = positions[edge.target];
-          if (!source || !target) return null;
-          const highlighted = edge.source === focusedNode || edge.target === focusedNode;
-          return (
-            <line
-              key={index}
-              x1={source.x}
-              y1={source.y}
-              x2={target.x}
-              y2={target.y}
-              stroke={highlighted ? "#0369a1" : "#cbd5e1"}
-              strokeOpacity={focusedNode ? (highlighted ? 0.9 : 0.28) : 0.7}
-              strokeWidth={highlighted ? 2 : 1.2}
-            />
-          );
-        })}
-        {graph.nodes.map((node) => {
-          const pos = positions[node.id];
-          const color = node.type === "source" ? "#0f766e" : node.type === "document" ? "#0369a1" : node.id === "selected" ? "#dc2626" : "#b45309";
-          const muted = focusedNode ? !linkedNodeIds.has(node.id) : false;
-          return (
-            <g
-              key={node.id}
-              className="cursor-pointer"
-              onMouseEnter={() => setFocusedNode(node.id)}
-              onClick={() => setFocusedNode(node.id)}
-            >
-              <circle
-                cx={pos.x}
-                cy={pos.y}
-                r={node.id === focusedNode ? 30 : node.id === "selected" ? 26 : 19}
-                fill={color}
-                opacity={muted ? 0.08 : 0.2}
-                stroke={color}
-                strokeOpacity={muted ? 0.3 : 1}
-                strokeWidth={node.id === focusedNode ? 3 : 2}
+        <svg viewBox={`0 0 ${width} ${height}`} className="h-[680px] w-full">
+          <defs>
+            <marker id="kg-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+              <path d="M0,0 L0,6 L9,3 z" fill="#64748b" />
+            </marker>
+            <marker id="kg-arrow-active" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+              <path d="M0,0 L0,6 L9,3 z" fill="#0369a1" />
+            </marker>
+          </defs>
+          <g fill="#64748b" fontSize="12" fontWeight="800" letterSpacing="0">
+            <text x="120" y="30" textAnchor="middle">
+              OSINT SOURCE
+            </text>
+            <text x="430" y="30" textAnchor="middle">
+              EVIDENCE
+            </text>
+            <text x="760" y="30" textAnchor="middle">
+              FOCUS ENTITY
+            </text>
+            <text x={width - 160} y="30" textAnchor="middle">
+              RELATED INTEL
+            </text>
+          </g>
+          {visibleEdges.map((edge) => {
+            const source = positions[edge.source];
+            const target = positions[edge.target];
+            if (!source || !target) return null;
+            const highlighted = activeEdge ? edgeKey(edge) === edgeKey(activeEdge) : activeNode ? edge.source === activeNode.id || edge.target === activeNode.id : false;
+            const muted = activeNode ? !connectedNodeIds.has(edge.source) || !connectedNodeIds.has(edge.target) : false;
+            const path = relationshipPath(source, target);
+            const label = edge.label.length > 22 ? truncate(edge.label, 22) : edge.label;
+            const labelPosition = relationshipLabelPosition(source, target);
+            return (
+              <g
+                key={edgeKey(edge)}
+                className="cursor-pointer"
+                onClick={() => {
+                  setActiveEdgeId(edgeKey(edge));
+                  setActiveNodeId(edge.target);
+                }}
+              >
+                <path
+                  d={path}
+                  fill="none"
+                  stroke={highlighted ? "#0369a1" : "#94a3b8"}
+                  strokeWidth={highlighted ? 2.8 : 1.5}
+                  strokeOpacity={muted && !highlighted ? 0.24 : 0.85}
+                  markerEnd={highlighted ? "url(#kg-arrow-active)" : "url(#kg-arrow)"}
+                />
+                <g transform={`translate(${labelPosition.x}, ${labelPosition.y})`} opacity={muted && !highlighted ? 0.35 : 1}>
+                  <rect x={-(label.length * 3.5 + 11)} y="-12" width={label.length * 7 + 22} height="22" rx="7" fill="#ffffff" stroke="#d8e0ea" />
+                  <text textAnchor="middle" dominantBaseline="middle" fill="#334155" fontSize="11" fontWeight="600">
+                    {label}
+                  </text>
+                </g>
+              </g>
+            );
+          })}
+          {visibleNodes.map((node) => {
+            const pos = positions[node.id];
+            if (!pos) return null;
+            const active = node.id === activeNode?.id;
+            const muted = activeNode ? !connectedNodeIds.has(node.id) : false;
+            return (
+              <GraphSvgNode
+                key={node.id}
+                node={node}
+                x={pos.x}
+                y={pos.y}
+                active={active}
+                muted={muted}
+                onClick={() => {
+                  setActiveNodeId(node.id);
+                  setActiveEdgeId("");
+                }}
               />
-              <text x={pos.x} y={pos.y + 38} textAnchor="middle" fill={muted ? "#94a3b8" : "#334155"} fontSize="11">
-                {truncate(node.label, 28)}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
+            );
+          })}
+        </svg>
+      </div>
+      <GraphInspector node={activeNode} edge={activeEdge} edges={connectedEdges} nodes={graph.nodes} onFocusEntity={onFocusEntity} />
     </div>
   );
+}
+
+function GraphSvgNode({
+  node,
+  x,
+  y,
+  active,
+  muted,
+  onClick,
+}: {
+  node: GraphNode;
+  x: number;
+  y: number;
+  active: boolean;
+  muted: boolean;
+  onClick: () => void;
+}) {
+  const color = graphNodeColor(node);
+  const label = truncate(node.label, node.kind === "document" ? 34 : 24);
+  const typeLabel = node.kind === "selected_entity" ? node.type : node.kind === "related_entity" ? node.type : node.kind ?? node.type;
+  if (node.kind === "document") {
+    return (
+      <g className="cursor-pointer" opacity={muted ? 0.36 : 1} onClick={onClick}>
+        <rect x={x - 112} y={y - 34} width="224" height="68" rx="12" fill="#ffffff" stroke={color} strokeWidth={active ? 3 : 1.7} />
+        <text x={x} y={y - 8} textAnchor="middle" fill="#0f172a" fontSize="12" fontWeight="700">
+          {label}
+        </text>
+        <text x={x} y={y + 13} textAnchor="middle" fill="#475569" fontSize="10" fontWeight="600">
+          DOCUMENT · {node.source_name ? truncate(node.source_name, 22) : "evidence"}
+        </text>
+      </g>
+    );
+  }
+  const radius = node.kind === "selected_entity" ? 46 : 34;
+  return (
+    <g className="cursor-pointer" opacity={muted ? 0.34 : 1} onClick={onClick}>
+      <circle cx={x} cy={y} r={radius} fill={`${color}18`} stroke={color} strokeWidth={active ? 4 : 2.2} />
+      <circle cx={x} cy={y - 18} r="13" fill="#ffffff" stroke={color} strokeWidth="1.5" />
+      <text x={x} y={y - 14} textAnchor="middle" fill={color} fontSize="9" fontWeight="800">
+        {nodeIconText(node)}
+      </text>
+      <text x={x} y={y + 8} textAnchor="middle" fill="#0f172a" fontSize="12" fontWeight="800">
+        {label}
+      </text>
+      <text x={x} y={y + 27} textAnchor="middle" fill="#475569" fontSize="10" fontWeight="700">
+        {typeLabel?.toUpperCase()}
+      </text>
+    </g>
+  );
+}
+
+function GraphInspector({
+  node,
+  edge,
+  edges,
+  nodes,
+  onFocusEntity,
+}: {
+  node: GraphNode | undefined;
+  edge: GraphEdge | undefined;
+  edges: GraphEdge[];
+  nodes: GraphNode[];
+  onFocusEntity: (node: GraphNode) => void;
+}) {
+  const source = edge ? nodes.find((item) => item.id === edge.source) : undefined;
+  const target = edge ? nodes.find((item) => item.id === edge.target) : undefined;
+  return (
+    <div className="rounded-xl border border-line bg-panel p-4 shadow-glow">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h3 className="text-base font-semibold text-slate-100">{edge ? "Relationship" : "Node"} Inspector</h3>
+        {node ? <Badge tone={graphNodeTone(node)}>{node.kind ?? node.type}</Badge> : null}
+      </div>
+      {edge && source && target ? (
+        <div className="mb-4 rounded-lg border border-cyanx/25 bg-cyanx/5 p-3">
+          <Badge tone={relationshipTone(edge.relationship)}>{edge.relationship ?? edge.label}</Badge>
+          <div className="mt-3 text-sm font-semibold text-slate-100">
+            {source.label} → {target.label}
+          </div>
+          <p className="mt-2 text-sm text-slate-400">{edge.description ?? relationshipDescription(edge)}</p>
+        </div>
+      ) : null}
+      {node ? (
+        <div className="space-y-4">
+          <div>
+            <div className="text-xs uppercase tracking-wide text-slate-500">{node.type}</div>
+            <div className="mt-1 text-lg font-semibold text-slate-100">{node.title ?? node.label}</div>
+            {node.description ? <p className="mt-2 line-clamp-5 text-sm leading-relaxed text-slate-400">{node.description}</p> : null}
+          </div>
+          <div className="space-y-2 text-sm">
+            {node.source_name ? <StatusLine label="Source" value={node.source_name} /> : null}
+            {node.language ? <StatusLine label="Language" value={node.language} /> : null}
+            {node.published_at ? <StatusLine label="Published" value={formatDate(node.published_at)} /> : null}
+            {node.shared_documents ? <StatusLine label="Shared Docs" value={String(node.shared_documents)} /> : null}
+            {node.confidence ? <StatusLine label="Confidence" value={String(node.confidence)} /> : null}
+          </div>
+          {node.evidence ? (
+            <div className="rounded-lg border border-line bg-ink/40 p-3">
+              <h4 className="mb-2 text-sm font-semibold text-slate-100">Evidence Snippet</h4>
+              <p className="line-clamp-5 text-sm leading-relaxed text-slate-400">{node.evidence}</p>
+            </div>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            {node.url ? (
+              <a href={node.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg bg-cyanx px-3 py-2 text-sm font-semibold text-ink hover:bg-sky-700">
+                <ExternalLink className="h-4 w-4" />
+                Open Evidence
+              </a>
+            ) : null}
+            {node.kind === "related_entity" ? (
+              <button onClick={() => onFocusEntity(node)} className="rounded-lg border border-line bg-ink px-3 py-2 text-sm font-semibold text-slate-100 hover:bg-panel2">
+                Focus Entity
+              </button>
+            ) : null}
+          </div>
+          <div>
+            <h4 className="mb-2 text-sm font-semibold text-slate-100">Connected Relationships</h4>
+            <div className="max-h-72 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
+              {edges.map((relationship) => {
+                const from = nodes.find((item) => item.id === relationship.source);
+                const to = nodes.find((item) => item.id === relationship.target);
+                return (
+                  <div key={edgeKey(relationship)} className="rounded-lg border border-line bg-ink/40 p-2 text-xs">
+                    <Badge tone={relationshipTone(relationship.relationship)}>{relationship.relationship ?? relationship.label}</Badge>
+                    <div className="mt-2 font-medium text-slate-100">
+                      {truncate(from?.label ?? relationship.source, 26)} → {truncate(to?.label ?? relationship.target, 26)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function layoutGraphNodes(nodes: GraphNode[], width: number, height: number) {
+  const layers: Record<string, GraphNode[]> = {
+    source: [],
+    document: [],
+    selected_entity: [],
+    related_entity: [],
+  };
+  nodes.forEach((node) => {
+    const key = node.kind ?? "related_entity";
+    if (layers[key]) layers[key].push(node);
+    else layers.related_entity.push(node);
+  });
+  const positions: Record<string, { x: number; y: number }> = {};
+  distributeLayer(layers.source, 120, height, positions);
+  distributeLayer(layers.document, 430, height, positions);
+  distributeLayer(layers.selected_entity, 760, height, positions, height / 2);
+  distributeLayer(layers.related_entity, width - 160, height, positions);
+  return positions;
+}
+
+function distributeLayer(nodes: GraphNode[], x: number, height: number, positions: Record<string, { x: number; y: number }>, fixedY?: number) {
+  if (!nodes.length) return;
+  nodes.forEach((node, index) => {
+    const y = fixedY ?? ((index + 1) * height) / (nodes.length + 1);
+    positions[node.id] = { x, y: Math.max(58, Math.min(height - 58, y)) };
+  });
+}
+
+function relationshipPath(source: { x: number; y: number }, target: { x: number; y: number }) {
+  const mid = source.x + (target.x - source.x) * 0.5;
+  return `M ${source.x} ${source.y} C ${mid} ${source.y}, ${mid} ${target.y}, ${target.x} ${target.y}`;
+}
+
+function relationshipLabelPosition(source: { x: number; y: number }, target: { x: number; y: number }) {
+  return { x: source.x + (target.x - source.x) * 0.52, y: source.y + (target.y - source.y) * 0.48 - 10 };
+}
+
+function edgeKey(edge: GraphEdge) {
+  return edge.id ?? `${edge.source}->${edge.target}:${edge.label}`;
+}
+
+function graphNodeColor(node: GraphNode) {
+  if (node.kind === "source") return "#0f766e";
+  if (node.kind === "document") return "#0369a1";
+  if (node.kind === "selected_entity") return "#dc2626";
+  return "#b45309";
+}
+
+function graphNodeTone(node: GraphNode): "slate" | "blue" | "green" | "amber" | "red" {
+  if (node.kind === "source") return "green";
+  if (node.kind === "document") return "blue";
+  if (node.kind === "selected_entity") return "red";
+  return "amber";
+}
+
+function nodeIconText(node: GraphNode) {
+  if (node.kind === "source") return "SRC";
+  if (node.kind === "selected_entity") return "FOC";
+  return (node.entity_type ?? node.type ?? "ENT").slice(0, 3).toUpperCase();
+}
+
+function relationshipTone(relationship?: string): "slate" | "blue" | "green" | "amber" | "red" {
+  if (relationship === "PUBLISHED") return "green";
+  if (relationship === "MENTIONS") return "blue";
+  if (relationship === "CO_OCCURS") return "amber";
+  return "slate";
+}
+
+function relationshipDescription(edge: GraphEdge) {
+  if (edge.relationship === "PUBLISHED") return "A public source published an evidence document.";
+  if (edge.relationship === "MENTIONS") return "An evidence document mentions an extracted security entity.";
+  if (edge.relationship === "CO_OCCURS") return "Two entities appear together in one or more evidence documents.";
+  return edge.label;
 }
 
 function PriorityRow({ finding, compact = false }: { finding: PriorityFinding; compact?: boolean }) {

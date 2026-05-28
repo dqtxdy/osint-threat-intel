@@ -141,6 +141,38 @@ export type EntityDetail = {
 };
 
 export type GraphData = {
-  nodes: Array<{ id: string; label: string; type: string }>;
-  edges: Array<{ source: string; target: string; label: string }>;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+};
+
+export type GraphNode = {
+  id: string;
+  label: string;
+  type: string;
+  kind?: "source" | "document" | "selected_entity" | "related_entity";
+  description?: string;
+  url?: string;
+  source_id?: string;
+  source_name?: string;
+  source_type?: string;
+  language?: string | null;
+  document_id?: number;
+  title?: string;
+  published_at?: string | null;
+  entity_type?: string;
+  value?: string;
+  evidence?: string;
+  confidence?: number;
+  shared_documents?: number;
+};
+
+export type GraphEdge = {
+  id?: string;
+  source: string;
+  target: string;
+  label: string;
+  relationship?: "PUBLISHED" | "MENTIONS" | "CO_OCCURS" | string;
+  description?: string;
+  document_id?: number;
+  shared_documents?: number;
 };
