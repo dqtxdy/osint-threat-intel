@@ -218,7 +218,7 @@ def entity_graph(entity_type: str, value: str) -> dict[str, Any]:
             nodes.append(
                 {
                     "id": related_id,
-                    "label": related["normalized_value"],
+                    "label": _graph_node_label(related["entity_type"], related["normalized_value"]),
                     "type": related["entity_type"],
                     "kind": "related_entity",
                     "entity_type": related["entity_type"],
@@ -245,7 +245,7 @@ def entity_graph(entity_type: str, value: str) -> dict[str, Any]:
         nodes.append(
             {
                 "id": node_id,
-                "label": row["normalized_value"],
+                "label": _graph_node_label(row["entity_type"], row["normalized_value"]),
                 "type": row["entity_type"],
                 "kind": "related_entity",
                 "entity_type": row["entity_type"],
@@ -358,12 +358,16 @@ def _count_by(items: list[dict[str, Any]], key: str) -> dict[str, int]:
 
 
 def _select_graph_entities(rows: list[Any], selected_type: str, selected_value: str, limit: int) -> list[Any]:
+    rows = list(rows)
     candidates = []
+    cve_values = {row["normalized_value"].upper() for row in rows if row["entity_type"] == "cve"}
     selected_value_lower = selected_value.lower()
     for row in rows:
         entity_type = row["entity_type"]
         value = row["normalized_value"]
         if entity_type == selected_type and value.lower() == selected_value_lower:
+            continue
+        if selected_type != "cve" and entity_type == "kev_catalog" and value.upper() in cve_values:
             continue
         if entity_type in GRAPH_HIDDEN_ENTITY_TYPES:
             continue
@@ -406,6 +410,12 @@ def _document_relation_label(entity_type: str) -> str:
 
 
 def _semantic_relation_label(selected_type: str, related_type: str, shared_documents: int) -> str:
+    if selected_type == "vendor" and related_type == "product":
+        return "has product"
+    if selected_type == "vendor" and related_type == "cve":
+        return "has CVE"
+    if selected_type == "vendor" and related_type == "ransomware_use":
+        return "ransomware use"
     if selected_type == "cve" and related_type == "kev_catalog":
         return "listed in KEV"
     if selected_type == "cve" and related_type == "vendor":
@@ -422,6 +432,12 @@ def _semantic_relation_label(selected_type: str, related_type: str, shared_docum
 
 
 def _semantic_relation_description(selected_type: str, selected_value: str, related_type: str, related_value: str, shared_documents: int) -> str:
+    if selected_type == "vendor" and related_type == "product":
+        return f"{selected_value} is associated with product {related_value} across {shared_documents} evidence document(s)."
+    if selected_type == "vendor" and related_type == "cve":
+        return f"{selected_value} is associated with vulnerability {related_value} in the evidence set."
+    if selected_type == "vendor" and related_type == "ransomware_use":
+        return f"{selected_value} appears in evidence where ransomware use is marked as {related_value.lower()}."
     if selected_type == "cve" and related_type == "kev_catalog":
         return f"{selected_value} appears in CISA KEV evidence, which raises prioritization confidence."
     if selected_type == "cve" and related_type == "product":
@@ -436,6 +452,12 @@ def _semantic_relation_description(selected_type: str, selected_value: str, rela
 
 
 def _graph_entity_description(selected_type: str, selected_value: str, related_type: str, related_value: str) -> str:
+    if selected_type == "vendor" and related_type == "product":
+        return f"Product connected to vendor/project {selected_value} through collected evidence."
+    if selected_type == "vendor" and related_type == "cve":
+        return f"Vulnerability connected to vendor/project {selected_value} through collected evidence."
+    if selected_type == "vendor" and related_type == "ransomware_use":
+        return f"Ransomware-use field observed in evidence connected to {selected_value}."
     if selected_type == "cve" and related_type == "kev_catalog":
         return f"CISA KEV confirmation for {selected_value}."
     if selected_type == "cve" and related_type == "product":
@@ -447,6 +469,14 @@ def _graph_entity_description(selected_type: str, selected_value: str, related_t
     if related_type in {"ip", "domain", "sha256", "sha1", "md5"}:
         return f"Observable indicator co-mentioned with {selected_value}."
     return f"{related_value} is co-mentioned with {selected_value} in collected evidence."
+
+
+def _graph_node_label(entity_type: str, value: str) -> str:
+    if entity_type == "ransomware_use":
+        return f"Ransomware: {value}"
+    if entity_type == "kev_catalog":
+        return f"KEV: {value}"
+    return value
 
 
 def _dedupe_nodes(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
