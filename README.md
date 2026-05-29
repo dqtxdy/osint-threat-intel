@@ -6,9 +6,16 @@ The project collects public cybersecurity content, cleans and normalizes it, ext
 
 ## Current MVP
 
-- RSS collection for security news and CERT/advisory sources
+- RSS collection for security news and CERT/advisory sources (including NCSC UK and NCSC NL)
 - CISA KEV JSON collection
 - Reddit public-community collection through OAuth, with educational fallback samples
+- Optional X recent-search collection through the official X API, with educational fallback samples
+- PhishTank verified-online phishing feed collection
+- Optional AlienVault OTX pulse collection through the official OTX API, with educational fallback samples
+- URLhaus malware URL feed collection, with educational fallback samples
+- ThreatFox IOC feed collection, with educational fallback samples
+- GitHub Security Advisories collection, with educational fallback samples
+- FIRST EPSS CVE enrichment, with educational fallback samples
 - Text cleaning and deduplication helpers
 - Regex-based extraction for CVEs, IPs, domains, URLs, hashes, and MITRE ATT&CK technique IDs
 - OSINT coverage scoring for source mix, reliability, linguistic diversity, and collection gaps
@@ -84,6 +91,73 @@ export REDDIT_USER_AGENT="pentest-capstone-cti-pipeline/0.1 by your_username"
 If these variables are missing, the collector uses `data/sample_reddit_security.json` so demos and tests still work offline.
 Use `--live-only` for presentation runs to disable this fallback and collect Reddit through OAuth or public subreddit JSON.
 
+## X API Collection
+
+X collection uses the official X API v2 recent-search endpoint. Set a bearer token before running the pipeline:
+
+```bash
+export X_BEARER_TOKEN=...
+python -m cti_pipeline.cli collect --source x --live-only
+```
+
+If `X_BEARER_TOKEN` is missing, normal demo runs use `data/sample_x_security.json`; `--live-only` disables that fallback and safely skips X when credentials are unavailable.
+
+## PhishTank and OTX Feeds
+
+PhishTank uses the official verified-online phishing database. For repeated automated use, set an app key:
+
+```bash
+export PHISHTANK_APP_KEY=...
+python -m cti_pipeline.cli collect --source phishtank --live-only
+```
+
+AlienVault OTX uses the official OTX API and requires an API key:
+
+```bash
+export OTX_API_KEY=...
+python -m cti_pipeline.cli collect --source otx --live-only
+```
+
+Normal demo runs use `data/sample_phishtank.json` and `data/sample_otx_pulses.json` if live access fails or credentials are unavailable. `--live-only` disables those fallbacks.
+
+## URLhaus and ThreatFox Collection
+
+URLhaus and ThreatFox collect recent malware distribution URLs and IOCs. To run live queries, set your abuse.ch API authentication key:
+
+```bash
+export ABUSECH_AUTH_KEY=...
+# Or service-specific variables:
+# export URLHAUS_AUTH_KEY=...
+# export THREATFOX_AUTH_KEY=...
+
+python -m cti_pipeline.cli collect --source urlhaus --live-only
+python -m cti_pipeline.cli collect --source threatfox --live-only
+```
+
+If these keys are missing, the collectors fall back to `data/sample_urlhaus.json` and `data/sample_threatfox.json`.
+
+## GitHub Security Advisories
+
+GitHub Advisories collects reviewed vulnerabilities and packages. For higher rate limits, set your GitHub personal access token:
+
+```bash
+export GITHUB_TOKEN=...
+python -m cti_pipeline.cli collect --source github_advisories --live-only
+```
+
+If no token is supplied, unauthenticated public access is used or it falls back to `data/sample_github_advisories.json`.
+
+## FIRST EPSS Enrichment
+
+The FIRST EPSS service enriches CVE entities with Exploit Prediction Scoring System scores and percentiles. It queries CVEs in batches:
+
+```bash
+python -m cti_pipeline.cli enrich
+```
+
+If the API is unreachable, it falls back to `data/sample_epss.json` maps.
+
+
 ## Live Data Mode
 
 For presentation data, run:
@@ -135,4 +209,9 @@ tests/             Unit tests
 
 ## Safety Scope
 
-This project is defensive and educational. It collects only public, approved sources, avoids exploit automation, avoids malware downloads, and keeps evidence links for generated intelligence.
+This project is strictly defensive and educational.
+- **Metadata and IOC collection only**: We do not download, store, or execute malware payloads or active exploits.
+- **No automated exploit behavior**: This pipeline is only for threat monitoring and defense planning.
+- **No scraping dashboards**: We only use official REST APIs, RSS feeds, or public/documented datasets. We do not scrape webpages or private panels (such as X web UI or AlienVault dashboard).
+- **Verifiable links**: All generated reports link back to their official source evidence.
+
