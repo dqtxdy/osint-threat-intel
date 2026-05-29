@@ -3,19 +3,32 @@ from __future__ import annotations
 from cti_pipeline.config import load_sources
 from cti_pipeline.enrichment.attack import enrich_attack_technique
 from cti_pipeline.enrichment.nvd import enrich_cve
+from cti_pipeline.enrichment.first_epss import enrich_epss_batch
 from cti_pipeline.settings import Settings
 from cti_pipeline.storage.sqlite_store import SQLiteStore
 
 
 def enrich_entities(store: SQLiteStore, settings: Settings, limit: int | None = None, allow_fallback: bool = True) -> dict[str, int]:
     sources = load_sources(settings.sources_path)
-    counts = {"cve": 0, "attack_technique": 0}
+    counts = {"cve": 0, "attack_technique": 0, "first_epss": 0}
 
-    for row in _prioritized_entities(store, "cve", limit):
+    cve_rows = _prioritized_entities(store, "cve", limit)
+    cve_ids = [row["normalized_value"] for row in cve_rows]
+    
+    epss_payloads = {}
+    if cve_ids and "first_epss" in sources:
+        epss_payloads = enrich_epss_batch(cve_ids, sources["first_epss"], allow_fallback=allow_fallback)
+
+    for row in cve_rows:
         payload = enrich_cve(row["normalized_value"], sources["nvd"], allow_fallback=allow_fallback)
         if payload:
             store.upsert_entity_enrichment(row["id"], "nvd", payload)
             counts["cve"] += 1
+            
+        cve_upper = row["normalized_value"].upper()
+        if cve_upper in epss_payloads:
+            store.upsert_entity_enrichment(row["id"], "first_epss", epss_payloads[cve_upper])
+            counts["first_epss"] += 1
 
     for row in _prioritized_entities(store, "attack_technique", limit):
         payload = enrich_attack_technique(row["normalized_value"], sources["mitre_attack"], allow_fallback=allow_fallback)
