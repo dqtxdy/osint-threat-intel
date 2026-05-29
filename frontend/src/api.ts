@@ -30,7 +30,13 @@ export const api = {
   entityGraph: (type: string, value: string) =>
     getJson<GraphData>(`/api/entities/${encodeURIComponent(type)}/${encodeURIComponent(value)}/graph`),
   trends: (days: number) => getJson<TrendSignal[]>(`/api/trends?days=${days}&limit=100`),
-  report: (days: number) => getText(`/api/report?days=${days}`),
+  report: (days: number, options?: { category?: string; entityType?: string; value?: string }) => {
+    const params = new URLSearchParams({ days: String(days) });
+    if (options?.category) params.set("category", options.category);
+    if (options?.entityType) params.set("entity_type", options.entityType);
+    if (options?.value) params.set("value", options.value);
+    return getText(`/api/report?${params.toString()}`);
+  },
   detections: (days: number) => getText(`/api/detections?days=${days}`),
   attackLayer: (days: number) => getJson<AttackLayer>(`/api/attack-layer?days=${days}`),
   stix: (days: number) => getJson<Record<string, unknown>>(`/api/export-stix?days=${days}`),

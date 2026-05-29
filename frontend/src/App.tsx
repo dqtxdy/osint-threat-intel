@@ -200,7 +200,7 @@ export default function App() {
               {page === "graph" && <GraphPage entities={entities} selected={selectedEntity} onSelect={setSelectedEntity} graph={graph} />}
               {page === "attack" && <AttackCoveragePage attackLayer={attackLayer} />}
               {page === "detections" && <DetectionBuilderPage detections={detections} />}
-              {page === "reports" && <ReportsPage report={report} />}
+              {page === "reports" && <ReportsPage report={report} entities={entities} selectedEntity={selectedEntity} />}
               {page === "exports" && <ExportsPage report={report} detections={detections} />}
               {page === "pipeline" && <PipelineStatusPage health={health} overview={overview} onRun={runPipeline} />}
             </>
@@ -638,9 +638,24 @@ function GraphPage({
   );
 }
 
-function ReportsPage({ report }: { report: string }) {
+function ReportsPage({ report, entities, selectedEntity }: { report: string; entities: EntitySummary[]; selectedEntity: EntitySummary | null }) {
   const [gemini, setGemini] = useState("");
   const [error, setError] = useState("");
+  const [scopeMode, setScopeMode] = useState("malware");
+  const entityTypes = useMemo(() => Array.from(new Set(entities.map((entity) => entity.type))).sort(), [entities]);
+  const [entityType, setEntityType] = useState("");
+  const [entityKey, setEntityKey] = useState("");
+  const [scopedReport, setScopedReport] = useState("");
+  const [scopeError, setScopeError] = useState("");
+
+  useEffect(() => {
+    if (!entityType && entityTypes.length) setEntityType(entityTypes[0]);
+  }, [entityTypes, entityType]);
+
+  useEffect(() => {
+    if (!entityKey && selectedEntity) setEntityKey(`${selectedEntity.type}|${selectedEntity.value}`);
+  }, [selectedEntity, entityKey]);
+
   async function generateGemini() {
     setError("");
     setGemini("Generating...");
@@ -651,19 +666,90 @@ function ReportsPage({ report }: { report: string }) {
       setError(String(err));
     }
   }
+
+  async function generateScopedReport() {
+    setScopeError("");
+    setScopedReport("Generating...");
+    try {
+      if (scopeMode === "all") {
+        setScopedReport(await api.report(DAYS));
+      } else if (scopeMode === "entity_type") {
+        setScopedReport(await api.report(DAYS, { entityType }));
+      } else if (scopeMode === "entity") {
+        const [type, value] = entityKey.split("|");
+        setScopedReport(await api.report(DAYS, { entityType: type, value }));
+      } else {
+        setScopedReport(await api.report(DAYS, { category: scopeMode }));
+      }
+    } catch (err) {
+      setScopedReport("");
+      setScopeError(String(err));
+    }
+  }
+
   return (
-    <div className="grid gap-5 xl:grid-cols-2">
-      <Panel title="Deterministic Analyst Report">
-        <pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap text-sm leading-relaxed text-slate-300 scrollbar-thin">{report}</pre>
-      </Panel>
-      <Panel title="Gemini Analyst Report">
-        <button onClick={generateGemini} className="mb-4 flex items-center gap-2 rounded-lg bg-cyanx px-3 py-2 text-sm font-semibold text-ink hover:bg-sky-300">
-          <Sparkles className="h-4 w-4" />
-          Generate
-        </button>
-        {error ? <div className="rounded-lg border border-amberx/30 bg-amberx/10 p-3 text-sm text-amber-100">{error}</div> : null}
-        {gemini ? <pre className="max-h-[65vh] overflow-auto whitespace-pre-wrap text-sm leading-relaxed text-slate-300 scrollbar-thin">{gemini}</pre> : null}
-      </Panel>
+    <div className="grid gap-5 xl:grid-cols-[0.85fr_1.15fr]">
+      <div className="space-y-5">
+        <Panel title="Focused Report Builder">
+          <div className="space-y-3">
+            <select value={scopeMode} onChange={(event) => setScopeMode(event.target.value)} className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm">
+              <option value="all">All Intelligence</option>
+              <option value="vulnerabilities">Vulnerabilities & Exposure</option>
+              <option value="malware">Malware, Ransomware & Indicators</option>
+              <option value="attack">MITRE ATT&CK Techniques</option>
+              <option value="vendors">Vendors & Products</option>
+              <option value="entity_type">One Entity Type</option>
+              <option value="entity">One Exact Entity</option>
+            </select>
+            {scopeMode === "entity_type" ? (
+              <select value={entityType} onChange={(event) => setEntityType(event.target.value)} className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm">
+                {entityTypes.map((type) => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+            ) : null}
+            {scopeMode === "entity" ? (
+              <select value={entityKey} onChange={(event) => setEntityKey(event.target.value)} className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm">
+                {entities.map((entity) => (
+                  <option key={`${entity.type}|${entity.value}`} value={`${entity.type}|${entity.value}`}>
+                    {entity.type} · {entity.value}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              <button onClick={generateScopedReport} className="flex items-center gap-2 rounded-lg bg-cyanx px-3 py-2 text-sm font-semibold text-ink hover:bg-sky-300">
+                <FileText className="h-4 w-4" />
+                Generate Focused Report
+              </button>
+              {scopedReport ? (
+                <button onClick={() => download("focused_report.md", scopedReport, "text/markdown")} className="rounded-lg border border-line bg-panel px-3 py-2 text-sm font-semibold text-slate-100 hover:bg-panel2">
+                  Download
+                </button>
+              ) : null}
+            </div>
+            {scopeError ? <div className="rounded-lg border border-amberx/30 bg-amberx/10 p-3 text-sm text-amber-100">{scopeError}</div> : null}
+          </div>
+        </Panel>
+        <Panel title="Gemini Analyst Report">
+          <button onClick={generateGemini} className="mb-4 flex items-center gap-2 rounded-lg bg-cyanx px-3 py-2 text-sm font-semibold text-ink hover:bg-sky-300">
+            <Sparkles className="h-4 w-4" />
+            Generate
+          </button>
+          {error ? <div className="rounded-lg border border-amberx/30 bg-amberx/10 p-3 text-sm text-amber-100">{error}</div> : null}
+          {gemini ? <pre className="max-h-[45vh] overflow-auto whitespace-pre-wrap text-sm leading-relaxed text-slate-300 scrollbar-thin">{gemini}</pre> : null}
+        </Panel>
+      </div>
+      <div className="space-y-5">
+        {scopedReport ? (
+          <Panel title="Focused Analyst Report">
+            <pre className="max-h-[72vh] overflow-auto whitespace-pre-wrap text-sm leading-relaxed text-slate-300 scrollbar-thin">{scopedReport}</pre>
+          </Panel>
+        ) : null}
+        <Panel title="Global Analyst Report">
+          <pre className="max-h-[72vh] overflow-auto whitespace-pre-wrap text-sm leading-relaxed text-slate-300 scrollbar-thin">{report}</pre>
+        </Panel>
+      </div>
     </div>
   );
 }
@@ -1375,7 +1461,7 @@ function reliabilityTone(label: string): "slate" | "blue" | "green" | "amber" | 
 }
 
 function sourceTypeTone(sourceType: string): "slate" | "blue" | "green" | "amber" | "red" {
-  if (sourceType === "structured_feed" || sourceType === "cert" || sourceType === "vendor") return "green";
+  if (sourceType === "structured_feed" || sourceType === "cert" || sourceType === "vendor" || sourceType === "threat_feed" || sourceType === "research") return "green";
   if (sourceType === "news" || sourceType === "rss") return "blue";
   if (sourceType === "social") return "amber";
   return "slate";
