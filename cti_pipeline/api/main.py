@@ -279,8 +279,19 @@ def trends(days: int = 3650, limit: int = 100) -> list[dict[str, Any]]:
 
 
 @app.get("/api/report", response_class=PlainTextResponse)
-def report(days: int = 3650) -> str:
-    return build_report(get_store(), days=days)
+def report(
+    days: int = 3650,
+    category: str | None = None,
+    entity_type: str | None = None,
+    value: str | None = None,
+) -> str:
+    return build_report(
+        get_store(),
+        days=days,
+        category=category,
+        entity_type=entity_type,
+        value=unquote(value) if value else None,
+    )
 
 
 @app.get("/api/export-pack")

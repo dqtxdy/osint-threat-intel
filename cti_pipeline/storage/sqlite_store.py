@@ -186,21 +186,30 @@ class SQLiteStore:
                 (now, document_id),
             )
 
-    def top_entities(self, days: int = 7, limit: int = 25) -> list[sqlite3.Row]:
+    def top_entities(
+        self,
+        days: int = 7,
+        limit: int = 25,
+        entity_types: list[str] | None = None,
+        normalized_value: str | None = None,
+        excluded_values: list[str] | None = None,
+    ) -> list[sqlite3.Row]:
+        filter_sql, filter_params = _entity_filter_sql(entity_types, normalized_value, excluded_values)
         with self.connect() as connection:
             return list(
                 connection.execute(
-                    """
+                    f"""
                     SELECT e.entity_type, e.normalized_value, COUNT(*) AS mentions
                     FROM entities e
                     JOIN document_entities de ON de.entity_id = e.id
                     JOIN documents d ON d.id = de.document_id
                     WHERE datetime(COALESCE(d.published_at, d.collected_at)) >= datetime('now', ?)
+                    {filter_sql}
                     GROUP BY e.entity_type, e.normalized_value
                     ORDER BY mentions DESC, e.entity_type, e.normalized_value
                     LIMIT ?
                     """,
-                    (f"-{days} days", limit),
+                    (f"-{days} days", *filter_params, limit),
                 )
             )
 
@@ -216,6 +225,32 @@ class SQLiteStore:
                     LIMIT ?
                     """,
                     (f"-{days} days", limit),
+                )
+            )
+
+    def recent_documents_for_entities(
+        self,
+        days: int = 7,
+        limit: int = 50,
+        entity_types: list[str] | None = None,
+        normalized_value: str | None = None,
+        excluded_values: list[str] | None = None,
+    ) -> list[sqlite3.Row]:
+        filter_sql, filter_params = _entity_filter_sql(entity_types, normalized_value, excluded_values)
+        with self.connect() as connection:
+            return list(
+                connection.execute(
+                    f"""
+                    SELECT DISTINCT d.*
+                    FROM documents d
+                    JOIN document_entities de ON de.document_id = d.id
+                    JOIN entities e ON e.id = de.entity_id
+                    WHERE datetime(COALESCE(d.published_at, d.collected_at)) >= datetime('now', ?)
+                    {filter_sql}
+                    ORDER BY COALESCE(d.published_at, d.collected_at) DESC
+                    LIMIT ?
+                    """,
+                    (f"-{days} days", *filter_params, limit),
                 )
             )
 
@@ -348,8 +383,21 @@ class SQLiteStore:
             for row in rows
         ]
 
-    def enriched_entity_summary(self, days: int = 7, limit: int = 25) -> list[dict[str, Any]]:
-        rows = self.top_entities(days=days, limit=limit)
+    def enriched_entity_summary(
+        self,
+        days: int = 7,
+        limit: int = 25,
+        entity_types: list[str] | None = None,
+        normalized_value: str | None = None,
+        excluded_values: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        rows = self.top_entities(
+            days=days,
+            limit=limit,
+            entity_types=entity_types,
+            normalized_value=normalized_value,
+            excluded_values=excluded_values,
+        )
         summary: list[dict[str, Any]] = []
         for row in rows:
             summary.append(
@@ -362,11 +410,19 @@ class SQLiteStore:
             )
         return summary
 
-    def entity_trends(self, days: int = 7, limit: int = 50) -> list[dict[str, Any]]:
+    def entity_trends(
+        self,
+        days: int = 7,
+        limit: int = 50,
+        entity_types: list[str] | None = None,
+        normalized_value: str | None = None,
+        excluded_values: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        filter_sql, filter_params = _entity_filter_sql(entity_types, normalized_value, excluded_values)
         with self.connect() as connection:
             rows = list(
                 connection.execute(
-                    """
+                    f"""
                     SELECT
                         e.entity_type,
                         e.normalized_value,
@@ -380,11 +436,12 @@ class SQLiteStore:
                     JOIN document_entities de ON de.entity_id = e.id
                     JOIN documents d ON d.id = de.document_id
                     WHERE datetime(COALESCE(d.published_at, d.collected_at)) >= datetime('now', ?)
+                    {filter_sql}
                     GROUP BY e.entity_type, e.normalized_value
                     ORDER BY source_count DESC, mentions DESC, e.entity_type, e.normalized_value
                     LIMIT ?
                     """,
-                    (f"-{days} days", limit),
+                    (f"-{days} days", *filter_params, limit),
                 )
             )
         return [
@@ -478,6 +535,27 @@ def _dt(value: datetime | None) -> str | None:
     if value is None:
         return None
     return value.isoformat()
+
+
+def _entity_filter_sql(
+    entity_types: list[str] | None,
+    normalized_value: str | None,
+    excluded_values: list[str] | None = None,
+) -> tuple[str, list[str]]:
+    clauses: list[str] = []
+    params: list[str] = []
+    if entity_types:
+        placeholders = ", ".join("?" for _ in entity_types)
+        clauses.append(f"AND e.entity_type IN ({placeholders})")
+        params.extend(entity_types)
+    if normalized_value:
+        clauses.append("AND e.normalized_value = ?")
+        params.append(normalized_value)
+    if excluded_values:
+        placeholders = ", ".join("?" for _ in excluded_values)
+        clauses.append(f"AND lower(e.normalized_value) NOT IN ({placeholders})")
+        params.extend(value.lower() for value in excluded_values)
+    return "\n                    ".join(clauses), params
 
 
 def _confirmation_label(social_mentions: int, non_social_mentions: int) -> str:

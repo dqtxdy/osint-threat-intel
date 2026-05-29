@@ -29,8 +29,21 @@ class PriorityFinding:
         return asdict(self)
 
 
-def build_priority_findings(store: SQLiteStore, days: int = 7, limit: int = 25) -> list[PriorityFinding]:
-    trends = store.entity_trends(days=days, limit=limit * 3)
+def build_priority_findings(
+    store: SQLiteStore,
+    days: int = 7,
+    limit: int = 25,
+    entity_types: list[str] | None = None,
+    normalized_value: str | None = None,
+    excluded_values: list[str] | None = None,
+) -> list[PriorityFinding]:
+    trends = store.entity_trends(
+        days=days,
+        limit=limit * 3,
+        entity_types=entity_types,
+        normalized_value=normalized_value,
+        excluded_values=excluded_values,
+    )
     findings = [_score_trend(store, trend, days) for trend in trends]
     findings.sort(key=lambda finding: (-finding.score, finding.entity_type, finding.value))
     return findings[:limit]
@@ -156,6 +169,8 @@ def _source_reliability_score(evidence_documents: list[dict[str, Any]]) -> tuple
         "structured_feed": 15,
         "cert": 14,
         "vendor": 14,
+        "threat_feed": 14,
+        "research": 12,
         "news": 10,
         "rss": 8,
         "social": 4,

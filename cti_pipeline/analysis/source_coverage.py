@@ -95,7 +95,7 @@ def build_source_coverage(store: SQLiteStore, days: int = 7) -> SourceCoverage:
     language_count = len(language_counts)
     social_documents = type_counts.get("social", 0)
     trusted_documents = sum(
-        count for source_type, count in type_counts.items() if source_type in {"structured_feed", "cert", "vendor"}
+        count for source_type, count in type_counts.items() if source_type in {"structured_feed", "cert", "vendor", "threat_feed", "research"}
     )
 
     score = _coverage_score(
@@ -176,7 +176,7 @@ def _coverage_gaps(
     if not social_documents:
         gaps.append("Community/social discussion is missing, reducing early-warning coverage.")
     if not trusted_documents:
-        gaps.append("Trusted structured, CERT, or vendor sources are missing.")
+        gaps.append("Trusted structured, CERT, vendor, research, or threat-feed sources are missing.")
     if "news" not in type_counts:
         gaps.append("Security news sources are missing from the current window.")
     return gaps
@@ -190,13 +190,13 @@ def _recommendations(gaps: list[str]) -> list[str]:
         if "Fewer than four" in gap:
             recommendations.append("Add at least two independent feeds beyond the current strongest source.")
         elif "fewer than three" in gap:
-            recommendations.append("Balance structured feeds, security news, CERT/vendor advisories, and community discussion.")
+            recommendations.append("Balance structured feeds, security news, CERT/vendor advisories, threat feeds, and community discussion.")
         elif "Linguistic diversity" in gap:
             recommendations.append("Enable multilingual feeds such as CERT-FR and JPCERT/CC, then show language coverage in the dashboard.")
         elif "Community/social" in gap:
             recommendations.append("Collect Reddit security communities or another approved public discussion source.")
         elif "Trusted structured" in gap:
-            recommendations.append("Include CISA KEV, CERT advisories, or vendor advisories before escalating findings.")
+            recommendations.append("Include CISA KEV, CERT advisories, vendor advisories, or threat feeds before escalating findings.")
         elif "Security news" in gap:
             recommendations.append("Collect The Hacker News, BleepingComputer, or KrebsOnSecurity to improve analyst context.")
         elif "No documents" in gap:
@@ -214,7 +214,7 @@ def _distribution(counts: dict[str, int], total: int) -> list[DistributionItem]:
 
 
 def _source_reliability(source_type: str) -> str:
-    if source_type in {"structured_feed", "cert", "vendor"}:
+    if source_type in {"structured_feed", "cert", "vendor", "threat_feed", "research"}:
         return "high"
     if source_type in {"news", "rss"}:
         return "medium"

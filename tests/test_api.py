@@ -31,7 +31,7 @@ def test_api_overview_and_exports(monkeypatch, tmp_path):
         evidence="CVE-2024-3400 observed with T1190.",
     )
 
-    from cti_pipeline.api.main import export_stix, health, overview, priorities, source_coverage
+    from cti_pipeline.api.main import export_stix, health, overview, priorities, report, source_coverage
 
     assert health()["status"] == "ok"
     assert overview(days=3650)["counts"]["documents"] == 1
@@ -39,3 +39,6 @@ def test_api_overview_and_exports(monkeypatch, tmp_path):
     assert source_coverage(days=3650)["type_mix"][0]["name"] == "structured_feed"
     assert priorities(days=3650)[0]["value"] in {"CVE-2024-3400", "T1190"}
     assert export_stix(days=3650)["type"] == "bundle"
+    cve_report = report(days=3650, entity_type="cve")
+    assert "Scoped Threat Intelligence Report - cve Entities" in cve_report
+    assert "`cve` `CVE-2024-3400`" in cve_report
