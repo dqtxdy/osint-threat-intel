@@ -16,30 +16,39 @@ IP_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 URL_RE = re.compile(r"\bhttps?://[^\s<>()\"']+", re.IGNORECASE)
 HASH_RE = re.compile(r"\b(?:[a-fA-F0-9]{32}|[a-fA-F0-9]{40}|[a-fA-F0-9]{64})\b")
 ATTACK_TECHNIQUE_RE = re.compile(r"\bT\d{4}(?:\.\d{3})?\b")
+DOMAIN_RE = re.compile(r"\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}\b")
+DEFANGED_DOT_RE = re.compile(r"\[\.\]|\(\.\)|\{\.\}", re.IGNORECASE)
+DEFANGED_COLON_RE = re.compile(r"\[:\]|\(:\)|\{:\}", re.IGNORECASE)
 
 
 def extract_entities(text: str) -> list[Entity]:
     entities: dict[tuple[str, str], Entity] = {}
+    extraction_text = _refang_for_extraction(text)
 
-    for match in CVE_RE.findall(text):
+    for match in CVE_RE.findall(extraction_text):
         _add(entities, "cve", match.upper())
 
-    for match in IP_RE.findall(text):
+    for match in IP_RE.findall(extraction_text):
         if _is_public_ip(match):
             _add(entities, "ip", match)
 
-    for match in URL_RE.findall(text):
+    for match in URL_RE.findall(extraction_text):
         cleaned = match.rstrip(".,);]")
         _add(entities, "url", cleaned)
         domain = _domain_from_url(cleaned)
         if domain:
             _add(entities, "domain", domain)
 
-    for match in HASH_RE.findall(text):
+    for match in DOMAIN_RE.findall(extraction_text):
+        domain = _domain_from_host(match)
+        if domain:
+            _add(entities, "domain", domain)
+
+    for match in HASH_RE.findall(extraction_text):
         hash_type = {32: "md5", 40: "sha1", 64: "sha256"}[len(match)]
         _add(entities, hash_type, match.lower())
 
-    for match in ATTACK_TECHNIQUE_RE.findall(text):
+    for match in ATTACK_TECHNIQUE_RE.findall(extraction_text):
         _add(entities, "attack_technique", match.upper())
 
     return sorted(entities.values(), key=lambda item: (item.entity_type, item.normalized_value))
@@ -66,11 +75,26 @@ def _is_public_ip(value: str) -> bool:
 
 
 def _domain_from_url(value: str) -> str | None:
-    parsed = urlparse(value)
-    host = parsed.hostname
+    try:
+        parsed = urlparse(value)
+        host = parsed.hostname
+    except ValueError:
+        return None
     if not host:
         return None
+    return _domain_from_host(host)
+
+
+def _domain_from_host(host: str) -> str | None:
     extracted = TLD_EXTRACTOR(host)
     if not extracted.suffix:
         return None
     return f"{extracted.domain}.{extracted.suffix}".lower()
+
+
+def _refang_for_extraction(value: str) -> str:
+    normalized = value.replace("hxxps://", "https://").replace("hxxp://", "http://")
+    normalized = normalized.replace("hxxps[:]", "https:").replace("hxxp[:]", "http:")
+    normalized = DEFANGED_DOT_RE.sub(".", normalized)
+    normalized = DEFANGED_COLON_RE.sub(":", normalized)
+    return normalized
