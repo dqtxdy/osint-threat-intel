@@ -1,0 +1,25 @@
+{
+  "query_status": "ok",
+  "urls": [
+    {
+      "id": "2780001",
+      "url": "http://malicious-payload-server[.]xyz/update.exe",
+      "url_status": "online",
+      "threat": "malware_download",
+      "tags": ["exe", "guloader"],
+      "urlhaus_link": "https://urlhaus.abuse.ch/url/2780001/",
+      "reporter": "threat_hunter_1",
+      "firstseen": "2026-05-27 12:00:00"
+    },
+    {
+      "id": "2780002",
+      "url": "http://corporate-invoice-phish[.]net/invoice.pdf.exe",
+      "url_status": "online",
+      "threat": "malware_download",
+      "tags": ["exe", "lumastealer"],
+      "urlhaus_link": "https://urlhaus.abuse.ch/url/2780002/",
+      "reporter": "security_researcher",
+      "firstseen": "2026-05-27 14:30:00"
+    }
+  ]
+}

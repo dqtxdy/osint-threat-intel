@@ -1,0 +1,38 @@
+{
+  "results": [
+    {
+      "id": "pulse-sample-001",
+      "name": "Credential phishing infrastructure targeting Microsoft 365",
+      "description": "Community OTX pulse tracking phishing pages, redirectors, and collection endpoints used against Microsoft 365 tenants.",
+      "created": "2026-05-27T07:20:00.000Z",
+      "modified": "2026-05-27T11:45:00.000Z",
+      "tags": ["phishing", "credential-theft", "microsoft-365"],
+      "adversary": "unknown",
+      "tlp": "white",
+      "references": ["https://otx.alienvault.com/pulse/pulse-sample-001"],
+      "indicators": [
+        {"type": "domain", "indicator": "login-security-example.com"},
+        {"type": "IPv4", "indicator": "203.0.113.45"},
+        {"type": "URL", "indicator": "https://login-security-example.com/session/verify"},
+        {"type": "FileHash-SHA256", "indicator": "9b2f6f7b4a70c0d00a8438e9c6d4cb58cb8f6c0b5fdb7bb40d3d894f0f2f7f6a"}
+      ]
+    },
+    {
+      "id": "pulse-sample-002",
+      "name": "Ransomware staging indicators observed in public reports",
+      "description": "Indicators associated with staging infrastructure and downloader activity discussed in public reporting.",
+      "created": "2026-05-26T16:10:00.000Z",
+      "modified": "2026-05-27T10:05:00.000Z",
+      "tags": ["ransomware", "loader", "initial-access"],
+      "adversary": "unknown",
+      "tlp": "white",
+      "references": ["https://otx.alienvault.com/pulse/pulse-sample-002"],
+      "indicators": [
+        {"type": "domain", "indicator": "cdn-update-example.net"},
+        {"type": "IPv4", "indicator": "198.51.100.72"},
+        {"type": "URL", "indicator": "https://cdn-update-example.net/update.bin"},
+        {"type": "FileHash-MD5", "indicator": "44d88612fea8a8f36de82e1278abb02f"}
+      ]
+    }
+  ]
+}

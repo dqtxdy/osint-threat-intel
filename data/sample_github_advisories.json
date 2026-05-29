@@ -1,0 +1,36 @@
+[
+  {
+    "ghsa_id": "GHSA-753j-4p56-3p28",
+    "cve_id": "CVE-2024-3400",
+    "severity": "critical",
+    "summary": "Command Injection in Palo Alto Networks PAN-OS",
+    "description": "A command injection vulnerability in the GlobalProtect gateway feature of Palo Alto Networks PAN-OS software allows an unauthenticated attacker to execute arbitrary code with root privileges.",
+    "html_url": "https://github.com/advisories/GHSA-753j-4p56-3p28",
+    "published_at": "2026-05-27T15:00:00Z",
+    "vulnerabilities": [
+      {
+        "package": {
+          "ecosystem": "npm",
+          "name": "pan-os-connector"
+        }
+      }
+    ]
+  },
+  {
+    "ghsa_id": "GHSA-928x-725p-2900",
+    "cve_id": "CVE-2024-3094",
+    "severity": "critical",
+    "summary": "Backdoor in XZ Utils leading to remote code execution",
+    "description": "Malicious code was discovered in the upstream tarballs of xz, starting with version 5.6.0. Through a series of complex obfuscations, the liblzma build process extracts a prebuilt object file from a disguised test file.",
+    "html_url": "https://github.com/advisories/GHSA-928x-725p-2900",
+    "published_at": "2026-05-27T16:30:00Z",
+    "vulnerabilities": [
+      {
+        "package": {
+          "ecosystem": "maven",
+          "name": "org.tukaani:xz"
+        }
+      }
+    ]
+  }
+]

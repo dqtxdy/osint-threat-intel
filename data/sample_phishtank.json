@@ -1,0 +1,40 @@
+[
+  {
+    "phish_id": "8900001",
+    "url": "https://login-security-example[.]com/session/verify",
+    "phish_detail_url": "https://phishtank.org/phish_detail.php?phish_id=8900001",
+    "submission_time": "2026-05-27T08:10:00+00:00",
+    "verified": "yes",
+    "verification_time": "2026-05-27T08:30:00+00:00",
+    "online": "yes",
+    "target": "Microsoft 365",
+    "details": [
+      {
+        "ip_address": "203.0.113.45",
+        "cidr_block": "203.0.113.0/24",
+        "announcing_network": "64500",
+        "rir": "arin",
+        "detail_time": "2026-05-27T08:20:00+00:00"
+      }
+    ]
+  },
+  {
+    "phish_id": "8900002",
+    "url": "https://wallet-support-example[.]net/connect",
+    "phish_detail_url": "https://phishtank.org/phish_detail.php?phish_id=8900002",
+    "submission_time": "2026-05-27T09:15:00+00:00",
+    "verified": "yes",
+    "verification_time": "2026-05-27T09:40:00+00:00",
+    "online": "yes",
+    "target": "Cryptocurrency Wallet",
+    "details": [
+      {
+        "ip_address": "198.51.100.72",
+        "cidr_block": "198.51.100.0/24",
+        "announcing_network": "64501",
+        "rir": "arin",
+        "detail_time": "2026-05-27T09:30:00+00:00"
+      }
+    ]
+  }
+]
