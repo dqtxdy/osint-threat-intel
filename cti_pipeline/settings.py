@@ -18,7 +18,32 @@ class Settings:
     llm_api_key: str | None
 
 
+def _load_dotenv(path: Path = Path(".env")) -> None:
+    if not path.exists():
+        return
+
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line.removeprefix("export ").strip()
+        if "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key or key in os.environ:
+            continue
+
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1]
+        os.environ[key] = value
+
+
 def load_settings() -> Settings:
+    _load_dotenv()
     return Settings(
         db_path=Path(os.getenv("CTI_DB_PATH", "data/cti.sqlite3")),
         sources_path=Path(os.getenv("CTI_SOURCES_PATH", "config/sources.yml")),
