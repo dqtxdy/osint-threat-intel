@@ -82,7 +82,7 @@ reddit:
     - blueteamsec
     - threatintel
     - malware
-  limit_per_subreddit: 25
+  limit_per_subreddit: 50
   fallback_path: data/sample_reddit_security.json
 
 x:
@@ -90,7 +90,7 @@ x:
   name: X Cybersecurity Search
   source_type: social
   api_url: https://api.x.com/2/tweets/search/recent
-  max_results: 10
+  max_results: 50
   queries:
     - '(CVE OR zero-day OR "0day" OR vulnerability OR ransomware) lang:en -is:retweet'
     - '("threat intelligence" OR malware OR "active exploitation") lang:en -is:retweet'
@@ -104,7 +104,7 @@ phishtank:
   source_type: threat_feed
   url: https://data.phishtank.com/data/online-valid.json
   keyed_url_template: https://data.phishtank.com/data/{app_key}/online-valid.json
-  limit: 25
+  limit: 200
   fallback_path: data/sample_phishtank.json
 
 otx:
@@ -112,7 +112,7 @@ otx:
   name: AlienVault OTX Pulses
   source_type: threat_feed
   api_url: https://otx.alienvault.com/api/v1/pulses/subscribed
-  limit: 10
+  limit: 50
   fallback_path: data/sample_otx_pulses.json
 
 nvd:
@@ -132,7 +132,7 @@ urlhaus:
   name: URLhaus Malware URLs
   source_type: threat_feed
   api_url: https://urlhaus-api.abuse.ch/v1/urls/recent/
-  limit: 25
+  limit: 200
   fallback_path: data/sample_urlhaus.json
 
 threatfox:
@@ -140,7 +140,7 @@ threatfox:
   name: ThreatFox IOCs
   source_type: threat_feed
   api_url: https://threatfox-api.abuse.ch/api/v1/
-  limit: 25
+  limit: 200
   fallback_path: data/sample_threatfox.json
 
 github_advisories:
@@ -148,7 +148,7 @@ github_advisories:
   name: GitHub Security Advisories
   source_type: vendor
   api_url: https://api.github.com/advisories
-  limit: 20
+  limit: 100
   fallback_path: data/sample_github_advisories.json
 
 first_epss:
@@ -156,4 +156,3 @@ first_epss:
   name: FIRST EPSS
   api_url: https://api.first.org/data/v1/epss
   fallback_path: data/sample_epss.json
-

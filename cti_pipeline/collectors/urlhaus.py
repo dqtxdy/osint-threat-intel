@@ -72,7 +72,7 @@ def _documents_from_urls(source: dict, urls: list[dict[str, Any]]) -> list[Docum
         url_status = entry.get("url_status") or "unknown"
         threat = entry.get("threat") or "malware_download"
         reporter = entry.get("reporter") or "unknown"
-        firstseen = entry.get("firstseen") or ""
+        firstseen = entry.get("firstseen") or entry.get("dateadded") or entry.get("date_added") or ""
         
         body_lines = [
             f"Malicious URL: {url_val}",
@@ -103,6 +103,7 @@ def _documents_from_urls(source: dict, urls: list[dict[str, Any]]) -> list[Docum
                     "url_status": url_status,
                     "threat": threat,
                     "tags": tags,
+                    "first_seen": firstseen,
                 }
             )
         )

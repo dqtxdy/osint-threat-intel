@@ -1,6 +1,6 @@
 from cti_pipeline.collectors.otx import collect_otx
 from cti_pipeline.collectors.phishtank import collect_phishtank
-from cti_pipeline.collectors.urlhaus import collect_urlhaus
+from cti_pipeline.collectors.urlhaus import collect_urlhaus, _documents_from_urls
 from cti_pipeline.collectors.threatfox import collect_threatfox
 
 
@@ -58,6 +58,28 @@ def test_urlhaus_collector_uses_fallback(monkeypatch):
     assert "Malicious URL:" in documents[0].body
     assert "urlhaus.abuse.ch" in documents[0].url
     assert collect_urlhaus(source, allow_fallback=False) == []
+
+
+def test_urlhaus_collector_accepts_dateadded_timestamp():
+    documents = _documents_from_urls(
+        {
+            "id": "urlhaus",
+            "name": "URLhaus Malware URLs",
+            "source_type": "threat_feed",
+            "limit": 1,
+        },
+        [
+            {
+                "id": "3855355",
+                "url": "http://payload.example/malware.exe",
+                "dateadded": "2026-05-29 11:10:00",
+            }
+        ],
+    )
+
+    assert len(documents) == 1
+    assert documents[0].published_at is not None
+    assert documents[0].raw_metadata["first_seen"] == "2026-05-29 11:10:00"
 
 
 def test_threatfox_collector_uses_fallback(monkeypatch):
