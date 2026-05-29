@@ -105,6 +105,41 @@ class SQLiteStore:
         with self.connect() as connection:
             for document in documents:
                 digest = content_hash(document.title, document.body)
+                existing = connection.execute(
+                    """
+                    SELECT id
+                    FROM documents
+                    WHERE source_id = ? AND url = ?
+                    ORDER BY id
+                    LIMIT 1
+                    """,
+                    (document.source_id, document.url),
+                ).fetchone()
+                if existing:
+                    connection.execute(
+                        """
+                        UPDATE documents
+                        SET
+                            source_name = ?,
+                            source_type = ?,
+                            language = COALESCE(language, ?),
+                            published_at = COALESCE(published_at, ?),
+                            collected_at = ?,
+                            raw_metadata = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            document.source_name,
+                            document.source_type,
+                            document.language,
+                            _dt(document.published_at),
+                            _dt(document.collected_at),
+                            json.dumps(document.raw_metadata, ensure_ascii=False),
+                            existing["id"],
+                        ),
+                    )
+                    duplicates += 1
+                    continue
                 try:
                     connection.execute(
                         """
