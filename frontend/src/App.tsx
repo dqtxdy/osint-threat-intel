@@ -24,7 +24,7 @@ import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContaine
 import { api } from "./api";
 import type { AttackLayer, DocumentItem, EntityDetail, EntitySummary, GraphData, GraphEdge, GraphNode, Health, Overview, PriorityFinding, SourceCoverage, TrendSignal } from "./types";
 
-type Page = "overview" | "coverage" | "priorities" | "feed" | "workbench" | "graph" | "attack" | "detections" | "reports" | "exports" | "pipeline";
+type Page = "overview" | "chat" | "coverage" | "priorities" | "feed" | "workbench" | "graph" | "attack" | "detections" | "reports" | "exports" | "pipeline";
 
 const DAYS = 3650;
 const CHART_GRID = "#dbe4ef";
@@ -38,6 +38,7 @@ const TOOLTIP_STYLE = {
 
 const navItems: Array<{ id: Page; label: string; icon: React.ElementType }> = [
   { id: "overview", label: "Mission Control", icon: Radar },
+  { id: "chat", label: "Analyst Chat", icon: Brain },
   { id: "coverage", label: "OSINT Coverage", icon: BarChart3 },
   { id: "priorities", label: "Priority Queue", icon: ShieldAlert },
   { id: "feed", label: "Threat Feed", icon: Globe2 },
@@ -66,6 +67,14 @@ export default function App() {
   const [attackLayer, setAttackLayer] = useState<AttackLayer | null>(null);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("");
+
+  const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState("");
+  const [chatCitations, setChatCitations] = useState<Array<{ document_id: number; title: string; source_name: string; url: string }>>([]);
+  const [chatCaveats, setChatCaveats] = useState<string[]>([]);
+  const [chatRelatedEntities, setChatRelatedEntities] = useState<Array<{ type: string; value: string }>>([]);
 
   useEffect(() => {
     void refresh();
@@ -111,6 +120,26 @@ export default function App() {
       setNotice(String(error));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleSendPrompt(text: string) {
+    if (!text.trim() || chatLoading) return;
+    const newMessages = [...chatMessages, { role: "user" as const, content: text }];
+    setChatMessages(newMessages);
+    setChatInput("");
+    setChatLoading(true);
+    setChatError("");
+    try {
+      const result = await api.chat(newMessages, DAYS);
+      setChatMessages([...newMessages, { role: "assistant" as const, content: result.answer }]);
+      setChatCitations(result.citations ?? []);
+      setChatCaveats(result.caveats ?? []);
+      setChatRelatedEntities(result.related_entities ?? []);
+    } catch (err: any) {
+      setChatError(err.message || String(err));
+    } finally {
+      setChatLoading(false);
     }
   }
 
@@ -191,6 +220,27 @@ export default function App() {
           ) : (
             <>
               {page === "overview" && overview && <OverviewPage overview={overview} trends={trends} />}
+              {page === "chat" && (
+                <ChatPage
+                  messages={chatMessages}
+                  input={chatInput}
+                  setInput={setChatInput}
+                  loading={chatLoading}
+                  error={chatError}
+                  citations={chatCitations}
+                  caveats={chatCaveats}
+                  relatedEntities={chatRelatedEntities}
+                  llmConfigured={health?.llm_configured ?? false}
+                  onSendPrompt={handleSendPrompt}
+                  onClearChat={() => {
+                    setChatMessages([]);
+                    setChatCitations([]);
+                    setChatCaveats([]);
+                    setChatRelatedEntities([]);
+                    setChatError("");
+                  }}
+                />
+              )}
               {page === "coverage" && overview && <CoveragePage coverage={overview.source_coverage} />}
               {page === "priorities" && <PrioritiesPage priorities={priorities} />}
               {page === "feed" && <ThreatFeed documents={documents} />}
@@ -1504,4 +1554,238 @@ function formatDate(value: string | null) {
 
 function truncate(value: string, length: number) {
   return value.length > length ? `${value.slice(0, length - 1)}...` : value;
+}
+
+function ChatPage({
+  messages,
+  input,
+  setInput,
+  loading,
+  error,
+  citations,
+  caveats,
+  relatedEntities,
+  llmConfigured,
+  onSendPrompt,
+  onClearChat,
+}: {
+  messages: Array<{ role: "user" | "assistant"; content: string }>;
+  input: string;
+  setInput: (v: string) => void;
+  loading: boolean;
+  error: string;
+  citations: Array<{ document_id: number; title: string; source_name: string; url: string }>;
+  caveats: string[];
+  relatedEntities: Array<{ type: string; value: string }>;
+  llmConfigured: boolean;
+  onSendPrompt: (text: string) => void;
+  onClearChat: () => void;
+}) {
+  const SUGGESTED_PROMPTS = [
+    "What are the top critical threats?",
+    "Summarize phishing activity.",
+    "What data sources are weakest?",
+    "Explain recent malware indicators.",
+    "Which CVEs have the highest priority?",
+    "What multilingual intelligence do we have?"
+  ];
+
+  return (
+    <div className="space-y-5">
+      {!llmConfigured ? (
+        <div className="rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger flex flex-col gap-2">
+          <div className="font-semibold text-base">LLM Analyst Chat Disabled</div>
+          <div>The chat interface is retrieval-augmented but requires a configured LLM provider to formulate analyst answers.</div>
+          <div className="text-xs font-mono bg-ink/30 p-2 rounded mt-1 border border-line/50">
+            Configure in your .env:<br />
+            LLM_PROVIDER=openai_compatible<br />
+            LLM_API_KEY=your_key_here<br />
+            LLM_BASE_URL=...
+          </div>
+        </div>
+      ) : null}
+
+      <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
+        {/* Main Chat Panel */}
+        <div className="flex flex-col rounded-xl border border-line bg-panel p-4 shadow-glow min-h-[600px] justify-between">
+          <div className="flex items-center justify-between border-b border-line pb-3 mb-4">
+            <h2 className="text-base font-semibold text-slate-100 flex items-center gap-2">
+              <Brain className="h-5 w-5 text-cyanx" />
+              CTI Analyst Chat Session
+            </h2>
+            {messages.length > 0 ? (
+              <button
+                onClick={onClearChat}
+                className="text-xs px-2 py-1 rounded border border-line bg-ink/30 hover:bg-ink hover:text-white transition"
+              >
+                Clear History
+              </button>
+            ) : null}
+          </div>
+
+          {error ? (
+            <div className="rounded-lg border border-amberx/30 bg-amberx/10 p-3 text-sm text-amber-100 mb-4">
+              <div className="font-semibold mb-1">Copilot Notification</div>
+              <div>{error}</div>
+            </div>
+          ) : null}
+
+          {/* Transcript Area */}
+          <div className="flex-1 overflow-y-auto max-h-[500px] mb-4 space-y-4 pr-2 scrollbar-thin flex flex-col">
+            {messages.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-center p-8 my-auto text-slate-400">
+                <div className="grid h-16 w-16 place-items-center rounded-2xl border border-cyanx/20 bg-cyanx/5 mb-4">
+                  <Brain className="h-8 w-8 text-cyanx" />
+                </div>
+                <h3 className="text-lg font-semibold text-slate-200 mb-2">Ready to Assist</h3>
+                <p className="max-w-md text-sm leading-relaxed">
+                  Ask me questions about CISA vulnerabilities, OSINT feeds, trending entities, or social media coverage. I will retrieve context from the local threat intelligence database first.
+                </p>
+                <div className="mt-6 flex flex-wrap gap-2 justify-center max-w-lg">
+                  {SUGGESTED_PROMPTS.slice(0, 3).map((prompt) => (
+                    <button
+                      key={prompt}
+                      onClick={() => onSendPrompt(prompt)}
+                      className="rounded-full border border-line bg-ink/30 px-3 py-1.5 text-xs text-slate-300 hover:bg-cyanx/10 hover:border-cyanx/30 transition"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              messages.map((msg, i) => (
+                <div
+                  key={i}
+                  className={`flex flex-col max-w-[85%] rounded-xl p-3 border ${
+                    msg.role === "user"
+                      ? "bg-cyanx/10 border-cyanx/20 self-end text-slate-100"
+                      : "bg-ink/30 border-line self-start text-slate-200"
+                  }`}
+                >
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    {msg.role === "user" ? "Analyst Question" : "Copilot Answer"}
+                  </div>
+                  <div className="text-sm whitespace-pre-wrap leading-relaxed">
+                    {msg.content}
+                  </div>
+                </div>
+              ))
+            )}
+
+            {loading ? (
+              <div className="flex flex-col max-w-[85%] rounded-xl p-3 border bg-ink/30 border-line self-start text-slate-200">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                  Copilot Answer
+                </div>
+                <div className="flex items-center gap-2 text-sm text-slate-400">
+                  <span className="h-2 w-2 rounded-full bg-cyanx animate-pulse"></span>
+                  Retrieving intelligence and compiling response...
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          {/* Input Box */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (input.trim() && !loading && llmConfigured) {
+                onSendPrompt(input);
+              }
+            }}
+            className="flex items-center gap-2 border-t border-line pt-3 mt-auto"
+          >
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              disabled={loading || !llmConfigured}
+              placeholder={llmConfigured ? "Query intelligence database (e.g. 'Show recent CVE-2024-3400 sightings')" : "LLM provider is not configured"}
+              className="flex-1 rounded-lg border border-line bg-ink/50 px-3 py-2 text-sm text-slate-100 outline-none focus:border-cyanx/50 transition disabled:opacity-50"
+            />
+            <button
+              type="submit"
+              disabled={loading || !input.trim() || !llmConfigured}
+              className="rounded-lg bg-cyanx px-4 py-2 text-sm font-semibold text-ink hover:bg-sky-700 transition disabled:opacity-40"
+            >
+              Send
+            </button>
+          </form>
+        </div>
+
+        {/* Right Sidebar Panel */}
+        <div className="space-y-5">
+          {/* Suggested Prompts */}
+          <Panel title="Suggested Analyst Prompts">
+            <div className="space-y-2">
+              {SUGGESTED_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt}
+                  onClick={() => onSendPrompt(prompt)}
+                  disabled={loading || !llmConfigured}
+                  className="w-full text-left rounded-lg border border-line bg-ink/30 px-3 py-2.5 text-xs font-semibold text-slate-300 hover:bg-cyanx/10 hover:border-cyanx/30 hover:text-slate-100 transition disabled:opacity-50"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+          </Panel>
+
+          {/* Citations Panel */}
+          {citations.length > 0 ? (
+            <Panel title="Evidence Citations">
+              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 scrollbar-thin">
+                {citations.map((citation, index) => (
+                  <a
+                    key={index}
+                    href={citation.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block rounded-lg border border-line bg-ink/40 p-3 hover:border-cyanx/40 transition group"
+                  >
+                    <div className="flex items-center justify-between gap-1 text-[10px] font-bold text-cyanx uppercase mb-1">
+                      <span>{truncate(citation.source_name, 25)}</span>
+                      <span className="text-slate-500">ID: {citation.document_id}</span>
+                    </div>
+                    <div className="text-xs font-medium text-slate-200 group-hover:text-cyanx line-clamp-2">
+                      {citation.title}
+                    </div>
+                  </a>
+                ))}
+              </div>
+            </Panel>
+          ) : null}
+
+          {/* Caveats Panel */}
+          {caveats.length > 0 ? (
+            <Panel title="Analyst Caveats">
+              <ul className="space-y-2 text-xs text-slate-400">
+                {caveats.map((caveat, index) => (
+                  <li key={index} className="flex gap-2 items-start">
+                    <span className="text-amberx font-semibold">!</span>
+                    <span>{caveat}</span>
+                  </li>
+                ))}
+              </ul>
+            </Panel>
+          ) : null}
+
+          {/* Related Entities */}
+          {relatedEntities.length > 0 ? (
+            <Panel title="Related Entities">
+              <div className="flex flex-wrap gap-1.5">
+                {relatedEntities.map((entity, index) => (
+                  <Badge key={index} tone="blue">
+                    <span className="opacity-60 mr-1">{entity.type}:</span>
+                    {entity.value}
+                  </Badge>
+                ))}
+              </div>
+            </Panel>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
 }

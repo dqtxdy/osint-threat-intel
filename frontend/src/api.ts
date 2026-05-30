@@ -46,6 +46,23 @@ export const api = {
     if (!response.ok) throw new Error(await response.text());
     return response.text();
   },
+  chat: async (messages: Array<{ role: string; content: string }>, days: number) => {
+    const response = await fetch(`${API_BASE}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages, days }),
+    });
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    return response.json() as Promise<{
+      answer: string;
+      citations: Array<{ document_id: number; title: string; source_name: string; url: string }>;
+      related_entities: Array<{ type: string; value: string }>;
+      suggested_followups: string[];
+      caveats: string[];
+    }>;
+  },
   runPipeline: async (days: number) => {
     const response = await fetch(`${API_BASE}/api/run-pipeline?days=${days}&source=all&live_only=true&fresh=false&enrich_limit=8`, { method: "POST" });
     if (!response.ok) throw new Error(await response.text());
