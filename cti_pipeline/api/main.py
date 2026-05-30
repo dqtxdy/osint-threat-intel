@@ -323,8 +323,27 @@ def attack_layer(days: int = 3650) -> dict[str, Any]:
 
 
 @app.get("/api/detections", response_class=PlainTextResponse)
-def detections(days: int = 3650, limit: int = 10) -> str:
-    return build_sigma_hunts(get_store(), days=days, limit=limit)
+def detections(
+    days: int = 3650,
+    limit: int = 10,
+    entity_types: str | None = None,
+    category: str | None = None,
+    product: str | None = None,
+    min_priority: str | None = None,
+) -> str:
+    types_set = None
+    if entity_types:
+        types_set = {t.strip().lower() for t in entity_types.split(",")}
+
+    return build_sigma_hunts(
+        get_store(),
+        days=days,
+        limit=limit,
+        entity_types=types_set,
+        log_category=category,
+        log_product=product,
+        min_priority=min_priority,
+    )
 
 
 @app.get("/api/export-stix")
