@@ -1428,47 +1428,307 @@ function ReportsPage({ report, entities, selectedEntity }: { report: string; ent
   );
 }
 
-function AttackCoveragePage({ attackLayer }: { attackLayer: AttackLayer | null }) {
-  const techniques = attackLayer?.techniques ?? [];
-  const data = techniques.map((technique) => ({ id: technique.techniqueID, score: technique.score }));
+function MetricCard({ title, value, icon: Icon, tone = "slate", subtitle }: { title: string; value: number | string; icon: any; tone?: string; subtitle?: string }) {
+  const borderColors = {
+    slate: "border-line bg-ink/20",
+    blue: "border-cyanx/20 bg-cyanx/5",
+    green: "border-tealt/20 bg-tealt/5",
+    amber: "border-amberx/20 bg-amberx/5",
+    red: "border-danger/20 bg-danger/5",
+  }[tone] || "border-line bg-ink/20";
+  
+  const textColors = {
+    slate: "text-slate-400",
+    blue: "text-cyanx",
+    green: "text-tealt",
+    amber: "text-amberx",
+    red: "text-danger",
+  }[tone] || "text-slate-400";
+
   return (
-    <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-      <Panel title="ATT&CK Technique Heat">
-        {data.length ? (
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-              <BarChart data={data}>
-                <CartesianGrid stroke={CHART_GRID} />
-                <XAxis dataKey="id" tick={CHART_TICK} />
-                <YAxis tick={CHART_TICK} />
-                <Tooltip contentStyle={TOOLTIP_STYLE} />
-                <Bar dataKey="score" fill="#0369a1" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        ) : (
-          <div className="rounded-lg border border-line bg-ink/40 p-4 text-sm text-slate-400">No ATT&CK techniques extracted yet.</div>
-        )}
-        <div className="mt-4 space-y-2">
-          {techniques.map((technique) => (
-            <div key={technique.techniqueID} className="rounded-lg border border-line bg-ink/30 p-3">
-              <div className="flex items-center justify-between">
-                <div className="font-semibold text-slate-100">{technique.techniqueID}</div>
-                <Badge tone="blue">score {technique.score}</Badge>
-              </div>
-              <div className="mt-1 text-sm text-slate-400">{technique.comment}</div>
+    <div className={`p-4 rounded-xl border flex items-center justify-between gap-4 shadow-sm ${borderColors}`}>
+      <div>
+        <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">{title}</div>
+        <div className="text-2xl font-black text-slate-100">{value}</div>
+        {subtitle && <div className="text-[10px] text-slate-500 mt-0.5">{subtitle}</div>}
+      </div>
+      <div className={`p-2.5 rounded-lg bg-white/[0.03] ${textColors}`}>
+        <Icon className="h-6 w-6" />
+      </div>
+    </div>
+  );
+}
+
+function mitreLink(id: string) {
+  if (id.includes(".")) {
+    const [parent, sub] = id.split(".");
+    return `https://attack.mitre.org/techniques/${parent}/${sub}/`;
+  }
+  return `https://attack.mitre.org/techniques/${id}/`;
+}
+
+function AttackCoveragePage({ attackLayer }: { attackLayer: AttackLayer | null }) {
+  const rawTechniques = (attackLayer?.techniques ?? []) as any[];
+  const ignoredIds = (attackLayer as any)?.ignored_invalid_ids_count ?? 0;
+
+  // Search & Sort states
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortField, setSortField] = useState<"id" | "name" | "tactic" | "mentions" | "sources" | "score">("score");
+  const [sortAsc, setSortAsc] = useState(false);
+
+  // Compute overall summary stats
+  const uniqueTactics = new Set(rawTechniques.flatMap(t => t.tactics ?? []));
+  const tacticsCovered = uniqueTactics.size;
+  const topSourceCount = rawTechniques.length ? Math.max(...rawTechniques.map(t => t.source_count ?? 0)) : 0;
+
+  // Filter and sort the technique inventory table
+  const filteredTechniques = useMemo(() => {
+    return rawTechniques.filter((t) => {
+      const q = searchQuery.toLowerCase();
+      const tacticStr = t.tactic || (t.tactics ? t.tactics.join(", ") : "");
+      return (
+        t.techniqueID.toLowerCase().includes(q) ||
+        (t.name && t.name.toLowerCase().includes(q)) ||
+        tacticStr.toLowerCase().includes(q) ||
+        (t.confirmation && t.confirmation.toLowerCase().includes(q))
+      );
+    });
+  }, [rawTechniques, searchQuery]);
+
+  const sortedTechniques = useMemo(() => {
+    const sorted = [...filteredTechniques];
+    sorted.sort((a, b) => {
+      let valA: any = "";
+      let valB: any = "";
+      if (sortField === "id") {
+        valA = a.techniqueID;
+        valB = b.techniqueID;
+      } else if (sortField === "name") {
+        valA = a.name || "";
+        valB = b.name || "";
+      } else if (sortField === "tactic") {
+        valA = a.tactic || (a.tactics ? a.tactics.join(", ") : "");
+        valB = b.tactic || (b.tactics ? b.tactics.join(", ") : "");
+      } else if (sortField === "mentions") {
+        valA = a.mention_count ?? a.mentions ?? 0;
+        valB = b.mention_count ?? b.mentions ?? 0;
+      } else if (sortField === "sources") {
+        valA = a.source_count ?? 0;
+        valB = b.source_count ?? 0;
+      } else if (sortField === "score") {
+        valA = a.score;
+        valB = b.score;
+      }
+
+      if (valA < valB) return sortAsc ? -1 : 1;
+      if (valA > valB) return sortAsc ? 1 : -1;
+      return 0;
+    });
+    return sorted;
+  }, [filteredTechniques, sortField, sortAsc]);
+
+  const handleSort = (field: typeof sortField) => {
+    if (sortField === field) {
+      setSortAsc(!sortAsc);
+    } else {
+      setSortField(field);
+      setSortAsc(false);
+    }
+  };
+
+  // Bar Chart Data (Top 20 valid techniques)
+  const chartData = rawTechniques.slice(0, 20).map((t) => ({
+    id: t.techniqueID,
+    name: t.name || "Unknown Technique",
+    score: t.score,
+    tactic: t.tactic || (t.tactics ? t.tactics.join(", ") : "")
+  }));
+
+  return (
+    <div className="space-y-6">
+      {/* 1. Summary Cards */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricCard title="Valid Techniques" value={rawTechniques.length} icon={ShieldAlert} tone="blue" subtitle="Verified MITRE ATT&CK" />
+        <MetricCard title="Tactics Covered" value={tacticsCovered} icon={Radar} tone="green" subtitle="Across standard categories" />
+        <MetricCard title="Ignored Invalid IDs" value={ignoredIds} icon={AlertTriangle} tone="amber" subtitle="Non-Enterprise ATT&CK format" />
+        <MetricCard title="Top Source Count" value={topSourceCount} icon={Languages} tone="slate" subtitle="Maximum source redundancy" />
+      </div>
+
+      {/* 2. Heat Chart & Navigator Download Row */}
+      <div className="grid gap-5 lg:grid-cols-[1.20fr_0.80fr]">
+        <Panel title="Top 20 ATT&CK Techniques Heat">
+          {chartData.length ? (
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+                <BarChart data={chartData}>
+                  <CartesianGrid stroke={CHART_GRID} />
+                  <XAxis dataKey="id" tick={CHART_TICK} />
+                  <YAxis tick={CHART_TICK} />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const d = payload[0].payload;
+                        return (
+                          <div className="bg-slate-900 border border-slate-700 p-3 rounded-lg shadow-xl text-xs text-slate-200">
+                            <div className="font-bold text-slate-100 mb-1">{d.id} - {d.name}</div>
+                            <div>Tactic: <span className="text-cyanx font-semibold">{d.tactic || "N/A"}</span></div>
+                            <div>Score: <span className="text-amberx font-semibold">{d.score}</span></div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Bar dataKey="score" fill="#0284c7" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
-          ))}
+          ) : (
+            <div className="rounded-lg border border-line bg-ink/40 p-4 text-sm text-slate-400">
+              No ATT&CK techniques extracted yet.
+            </div>
+          )}
+        </Panel>
+
+        <Panel title="Navigator Layer Export">
+          <div className="flex flex-col h-80 justify-between">
+            <div>
+              <p className="text-xs text-slate-400 mb-3 leading-relaxed">
+                Download this ATT&CK Coverage layer to upload directly into the official MITRE ATT&CK Navigator web application.
+              </p>
+              <button
+                onClick={() => download("attack_navigator_layer.json", JSON.stringify(attackLayer, null, 2), "application/json")}
+                className="flex items-center gap-2 rounded-lg bg-cyanx px-3 py-2 text-sm font-semibold text-ink hover:bg-sky-300 transition"
+              >
+                <Download className="h-4 w-4" />
+                Download Layer
+              </button>
+            </div>
+            <pre className="max-h-[160px] overflow-auto whitespace-pre-wrap text-[10px] leading-relaxed text-slate-400 bg-black/30 border border-line p-2 rounded-lg scrollbar-thin">
+              {JSON.stringify(attackLayer, null, 2)}
+            </pre>
+          </div>
+        </Panel>
+      </div>
+
+      {/* 3. Searchable/Sortable Technique Table */}
+      <Panel title="ATT&CK Technique Inventory">
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 rounded-lg border border-line bg-ink/50 px-3 py-2">
+            <Search className="h-4 w-4 text-slate-500" />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-transparent text-sm outline-none text-slate-100 placeholder-slate-400"
+              placeholder="Search by ID, name, tactic, or confirmation..."
+            />
+          </div>
+
+          <div className="overflow-x-auto rounded-lg border border-line bg-panel2/30">
+            <table className="w-full border-collapse text-left text-sm text-slate-200">
+              <thead className="bg-panel2 text-xs uppercase tracking-wide text-slate-400">
+                <tr>
+                  <th className="px-4 py-3 cursor-pointer select-none hover:text-slate-100" onClick={() => handleSort("id")}>
+                    ID {sortField === "id" && (sortAsc ? "▲" : "▼")}
+                  </th>
+                  <th className="px-4 py-3 cursor-pointer select-none hover:text-slate-100" onClick={() => handleSort("name")}>
+                    Name {sortField === "name" && (sortAsc ? "▲" : "▼")}
+                  </th>
+                  <th className="px-4 py-3 cursor-pointer select-none hover:text-slate-100" onClick={() => handleSort("tactic")}>
+                    Tactic {sortField === "tactic" && (sortAsc ? "▲" : "▼")}
+                  </th>
+                  <th className="px-4 py-3 text-center cursor-pointer select-none hover:text-slate-100" onClick={() => handleSort("mentions")}>
+                    Mentions {sortField === "mentions" && (sortAsc ? "▲" : "▼")}
+                  </th>
+                  <th className="px-4 py-3 text-center cursor-pointer select-none hover:text-slate-100" onClick={() => handleSort("sources")}>
+                    Sources {sortField === "sources" && (sortAsc ? "▲" : "▼")}
+                  </th>
+                  <th className="px-4 py-3 text-center cursor-pointer select-none hover:text-slate-100" onClick={() => handleSort("score")}>
+                    Score {sortField === "score" && (sortAsc ? "▲" : "▼")}
+                  </th>
+                  <th className="px-4 py-3">Confirmation</th>
+                  <th className="px-4 py-3">Observation Window</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedTechniques.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
+                      No techniques match the active query.
+                    </td>
+                  </tr>
+                ) : (
+                  sortedTechniques.map((tech) => {
+                    const mentionsVal = tech.mention_count ?? tech.mentions ?? 0;
+                    const sourcesVal = tech.source_count ?? 0;
+                    
+                    return (
+                      <tr key={tech.techniqueID} className="border-t border-line/50 hover:bg-white/[0.02] transition">
+                        <td className="px-4 py-3 font-semibold text-cyanx">
+                          <a
+                            href={mitreLink(tech.techniqueID)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:underline inline-flex items-center gap-1"
+                          >
+                            {tech.techniqueID}
+                            <ExternalLink className="h-3 w-3 inline" />
+                          </a>
+                        </td>
+                        <td className="px-4 py-3 font-medium text-slate-100">{tech.name || "Unknown Technique"}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-1">
+                            {tech.tactics && tech.tactics.length > 0 ? (
+                              tech.tactics.map((tac: string) => (
+                                <Badge key={tac} tone="blue">{tac}</Badge>
+                              ))
+                            ) : tech.tactic ? (
+                              <Badge tone="blue">{tech.tactic}</Badge>
+                            ) : (
+                              <span className="text-slate-500 text-xs">N/A</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-center font-semibold text-slate-300">{mentionsVal}</td>
+                        <td className="px-4 py-3 text-center font-semibold text-slate-300">{sourcesVal}</td>
+                        <td className="px-4 py-3 text-center">
+                          <Badge tone={tech.score >= 80 ? "red" : tech.score >= 40 ? "amber" : "green"}>
+                            {tech.score}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 text-xs">
+                          <Badge tone={tech.confirmation === "social + corroborated" ? "green" : tech.confirmation === "social only" ? "amber" : "blue"}>
+                            {tech.confirmation || "Unknown"}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-400">
+                          {tech.first_seen ? (
+                            <span>
+                              {tech.first_seen.split("T")[0]} to {tech.last_seen ? tech.last_seen.split("T")[0] : "now"}
+                            </span>
+                          ) : (
+                            <span className="text-slate-600">N/A</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* 4. Analyst Callout Note */}
+          <div className="rounded-xl border border-cyanx/20 bg-cyanx/5 p-4 text-slate-300 flex items-start gap-3">
+            <Brain className="h-5 w-5 text-cyanx shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold text-slate-100 block mb-1">Analyst Note: Evidence-Extracted Coverage</span>
+              <p className="text-xs leading-relaxed text-slate-300">
+                This matrix is built dynamically from ATT&CK technique IDs extracted directly from crawled threat feeds, vulnerability advisories, and social network posts. This represents <strong>observed intelligence coverage</strong> (i.e. what techniques are currently actively discussed in relation to campaigns or zero-days), rather than a assessment of an organization's internal detection capabilities or compliance status.
+              </p>
+            </div>
+          </div>
         </div>
-      </Panel>
-      <Panel title="Navigator Layer JSON">
-        <button
-          onClick={() => download("attack_navigator_layer.json", JSON.stringify(attackLayer, null, 2), "application/json")}
-          className="mb-4 rounded-lg bg-cyanx px-3 py-2 text-sm font-semibold text-ink hover:bg-sky-300"
-        >
-          Download Layer
-        </button>
-        <pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap text-xs leading-relaxed text-slate-300 scrollbar-thin">{JSON.stringify(attackLayer, null, 2)}</pre>
       </Panel>
     </div>
   );
