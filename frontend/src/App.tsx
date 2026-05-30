@@ -1611,15 +1611,14 @@ function KnowledgeGraph({
   // Pan / Zoom State
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  
-  // Drag threshold to suppress clicks
-  const [pointerStart, setPointerStart] = useState({ x: 0, y: 0 });
-  const [hasDragged, setHasDragged] = useState(false);
 
   const zoomRef = useRef(1);
   const panRef = useRef({ x: 0, y: 0 });
+  const pointerStartRef = useRef({ x: 0, y: 0 });
+  const dragStartRef = useRef({ x: 0, y: 0 });
+  const pointerDownRef = useRef(false);
+  const hasDraggedRef = useRef(false);
+  const capturedPointerIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     zoomRef.current = zoom;
@@ -1674,40 +1673,48 @@ function KnowledgeGraph({
 
   const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     if (e.pointerType === "mouse" && e.button !== 0) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
-    setIsDragging(true);
     const pt = getSVGCoordinates(svgRef.current, e.clientX, e.clientY);
-    setDragStart({ x: pt.x - pan.x, y: pt.y - pan.y });
-    setPointerStart({ x: e.clientX, y: e.clientY });
-    setHasDragged(false);
+    const nextDragStart = { x: pt.x - panRef.current.x, y: pt.y - panRef.current.y };
+    pointerDownRef.current = true;
+    pointerStartRef.current = { x: e.clientX, y: e.clientY };
+    dragStartRef.current = nextDragStart;
+    hasDraggedRef.current = false;
+    capturedPointerIdRef.current = null;
   };
 
   const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (!isDragging) return;
+    if (!pointerDownRef.current) return;
     const pt = getSVGCoordinates(svgRef.current, e.clientX, e.clientY);
-    setPan({
-      x: pt.x - dragStart.x,
-      y: pt.y - dragStart.y,
-    });
-
-    const dx = e.clientX - pointerStart.x;
-    const dy = e.clientY - pointerStart.y;
+    const dx = e.clientX - pointerStartRef.current.x;
+    const dy = e.clientY - pointerStartRef.current.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist > 4) {
-      setHasDragged(true);
+      hasDraggedRef.current = true;
+      if (capturedPointerIdRef.current === null) {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        capturedPointerIdRef.current = e.pointerId;
+      }
+      const nextPan = {
+        x: pt.x - dragStartRef.current.x,
+        y: pt.y - dragStartRef.current.y,
+      };
+      setPan(nextPan);
     }
   };
 
   const handlePointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (!isDragging) return;
-    e.currentTarget.releasePointerCapture(e.pointerId);
-    setIsDragging(false);
+    if (capturedPointerIdRef.current === e.pointerId) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    pointerDownRef.current = false;
+    capturedPointerIdRef.current = null;
   };
 
   const handleSvgClickCapture = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (hasDragged) {
+    if (hasDraggedRef.current) {
       e.stopPropagation();
       e.preventDefault();
+      hasDraggedRef.current = false;
     }
   };
 
