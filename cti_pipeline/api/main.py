@@ -269,6 +269,14 @@ def entity_graph(entity_type: str, value: str) -> dict[str, Any]:
     return {"nodes": _dedupe_nodes(nodes), "edges": _dedupe_edges(edges)}
 
 
+@app.get("/api/entities/{entity_type}/{value}/semantic-graph")
+def entity_semantic_graph(entity_type: str, value: str) -> dict[str, Any]:
+    store = get_store()
+    normalized_value = unquote(value)
+    from cti_pipeline.graph.semantic import build_semantic_graph
+    return build_semantic_graph(store, entity_type, normalized_value)
+
+
 @app.get("/api/priorities")
 def priorities(days: int = 3650, limit: int = 25) -> list[dict[str, Any]]:
     return [finding.to_dict() for finding in build_priority_findings(get_store(), days=days, limit=limit)]
