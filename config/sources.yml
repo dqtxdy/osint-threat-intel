@@ -125,7 +125,7 @@ nvd:
 mitre_attack:
   id: mitre_attack
   name: MITRE ATT&CK
-  fallback_path: data/sample_attack_techniques.json
+  fallback_path: data/attack_enterprise_techniques.json
 
 urlhaus:
   id: urlhaus

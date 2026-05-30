@@ -48,10 +48,38 @@ def extract_entities(text: str) -> list[Entity]:
         hash_type = {32: "md5", 40: "sha1", 64: "sha256"}[len(match)]
         _add(entities, hash_type, match.lower())
 
+    valid_techs = get_valid_techniques()
     for match in ATTACK_TECHNIQUE_RE.findall(extraction_text):
-        _add(entities, "attack_technique", match.upper())
+        val = match.upper()
+        if valid_techs is None or val in valid_techs:
+            _add(entities, "attack_technique", val)
 
     return sorted(entities.values(), key=lambda item: (item.entity_type, item.normalized_value))
+
+
+_VALID_TECHNIQUES = None
+
+def get_valid_techniques() -> set[str] | None:
+    global _VALID_TECHNIQUES
+    if _VALID_TECHNIQUES is None:
+        import json
+        from pathlib import Path
+        catalog_paths = [
+            Path(__file__).parents[2] / "data" / "attack_enterprise_techniques.json",
+            Path("data/attack_enterprise_techniques.json"),
+            Path(__file__).parents[2] / "data" / "sample_attack_techniques.json",
+            Path("data/sample_attack_techniques.json"),
+        ]
+        for path in catalog_paths:
+            if path.exists():
+                try:
+                    with path.open("r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        _VALID_TECHNIQUES = {k.upper() for k in data.keys()}
+                        break
+                except Exception:
+                    pass
+    return _VALID_TECHNIQUES
 
 
 def _add(entities: dict[tuple[str, str], Entity], entity_type: str, value: str) -> None:
