@@ -164,6 +164,11 @@ export type GraphNode = {
   evidence?: string;
   confidence?: number;
   shared_documents?: number;
+  risk_level?: string;
+  badges?: string[];
+  evidence_count?: number;
+  first_seen?: string | null;
+  last_seen?: string | null;
 };
 
 export type GraphEdge = {
@@ -175,4 +180,54 @@ export type GraphEdge = {
   description?: string;
   document_id?: number;
   shared_documents?: number;
+  predicate?: string;
+  category?: string;
+  confidence?: number;
+  source_reliability?: string;
+  evidence_document_ids?: number[];
+  evidence_count?: number;
+  rationale?: string;
+  first_seen?: string | null;
+  last_seen?: string | null;
+};
+
+export type SemanticTriple = {
+  subject: string;
+  predicate: string;
+  object: string;
+  evidence: number[];
+  confidence: number;
+  rationale: string;
+};
+
+export type SemanticCluster = {
+  id: string;
+  label: string;
+  node_ids: string[];
+};
+
+export type SemanticFilters = {
+  categories: string[];
+  entity_types: string[];
+  risk_levels: string[];
+  source_types: string[];
+};
+
+export type SemanticGraphResponse = {
+  summary: {
+    focus: { type: string; value: string };
+    analyst_takeaway: string;
+    evidence_count: number;
+    total_evidence_count?: number;
+    displayed_evidence_count?: number;
+    aggregation_applied?: boolean;
+    relationship_count: number;
+    source_count: number;
+    caveats: string[];
+  };
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  triples: SemanticTriple[];
+  clusters: SemanticCluster[];
+  filters: SemanticFilters;
 };

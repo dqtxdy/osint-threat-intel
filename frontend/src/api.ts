@@ -1,4 +1,4 @@
-import type { AttackLayer, DocumentItem, EntityDetail, EntitySummary, GraphData, Health, Overview, PriorityFinding, SourceCoverage, TrendSignal } from "./types";
+import type { AttackLayer, DocumentItem, EntityDetail, EntitySummary, GraphData, Health, Overview, PriorityFinding, SourceCoverage, TrendSignal, SemanticGraphResponse } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
 
@@ -29,6 +29,8 @@ export const api = {
     getJson<EntityDetail>(`/api/entities/${encodeURIComponent(type)}/${encodeURIComponent(value)}?days=${days}`),
   entityGraph: (type: string, value: string) =>
     getJson<GraphData>(`/api/entities/${encodeURIComponent(type)}/${encodeURIComponent(value)}/graph`),
+  entitySemanticGraph: (type: string, value: string) =>
+    getJson<SemanticGraphResponse>(`/api/entities/${encodeURIComponent(type)}/${encodeURIComponent(value)}/semantic-graph`),
   trends: (days: number) => getJson<TrendSignal[]>(`/api/trends?days=${days}&limit=100`),
   report: (days: number, options?: { category?: string; entityType?: string; value?: string }) => {
     const params = new URLSearchParams({ days: String(days) });
