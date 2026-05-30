@@ -18,13 +18,13 @@ import {
   Sparkles,
   TerminalSquare,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import type { ElementType, ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { api } from "./api";
 import type { AttackLayer, DocumentItem, EntityDetail, EntitySummary, GraphData, GraphEdge, GraphNode, Health, Overview, PriorityFinding, SourceCoverage, TrendSignal, SemanticGraphResponse, SemanticTriple } from "./types";
 
-type Page = "overview" | "chat" | "coverage" | "priorities" | "feed" | "workbench" | "graph" | "attack" | "detections" | "reports" | "exports" | "pipeline";
+type Page = "mission_control" | "intel_explorer" | "knowledge_graph" | "reports_detections";
 
 const DAYS = 3650;
 const CHART_GRID = "#dbe4ef";
@@ -37,22 +37,18 @@ const TOOLTIP_STYLE = {
 };
 
 const navItems: Array<{ id: Page; label: string; icon: React.ElementType }> = [
-  { id: "overview", label: "Mission Control", icon: Radar },
-  { id: "chat", label: "Analyst Chat", icon: Brain },
-  { id: "coverage", label: "OSINT Coverage", icon: BarChart3 },
-  { id: "priorities", label: "Priority Queue", icon: ShieldAlert },
-  { id: "feed", label: "Threat Feed", icon: Globe2 },
-  { id: "workbench", label: "Entity Workbench", icon: Boxes },
-  { id: "graph", label: "Knowledge Graph", icon: GitBranch },
-  { id: "attack", label: "ATT&CK Coverage", icon: Layers3 },
-  { id: "detections", label: "Detection Builder", icon: TerminalSquare },
-  { id: "reports", label: "Reports", icon: FileText },
-  { id: "exports", label: "Exports", icon: Download },
-  { id: "pipeline", label: "Pipeline Status", icon: Activity },
+  { id: "mission_control", label: "Mission Control", icon: Radar },
+  { id: "intel_explorer", label: "Intelligence Explorer", icon: Globe2 },
+  { id: "knowledge_graph", label: "Knowledge Graph", icon: GitBranch },
+  { id: "reports_detections", label: "Reports & Detections", icon: FileText },
 ];
 
 export default function App() {
-  const [page, setPage] = useState<Page>("overview");
+  const [page, setPage] = useState<Page>("mission_control");
+  const [missionTab, setMissionTab] = useState<"overview" | "priorities" | "pipeline">("overview");
+  const [intelTab, setIntelTab] = useState<"feed" | "workbench" | "coverage">("feed");
+  const [reportsTab, setReportsTab] = useState<"reports" | "attack" | "detections" | "exports">("reports");
+  const [chatOpen, setChatOpen] = useState(false);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [priorities, setPriorities] = useState<PriorityFinding[]>([]);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
@@ -230,44 +226,114 @@ export default function App() {
             <div className="grid min-h-[60vh] place-items-center text-slate-400">Loading intelligence workspace...</div>
           ) : (
             <>
-              {page === "overview" && overview && <OverviewPage overview={overview} trends={trends} />}
-              {page === "chat" && (
-                <ChatPage
-                  messages={chatMessages}
-                  input={chatInput}
-                  setInput={setChatInput}
-                  loading={chatLoading}
-                  error={chatError}
-                  citations={chatCitations}
-                  caveats={chatCaveats}
-                  relatedEntities={chatRelatedEntities}
-                  llmConfigured={health?.llm_configured ?? false}
-                  onSendPrompt={handleSendPrompt}
-                  onClearChat={() => {
-                    setChatMessages([]);
-                    setChatCitations([]);
-                    setChatCaveats([]);
-                    setChatRelatedEntities([]);
-                    setChatError("");
-                  }}
-                />
+              {page === "mission_control" && overview && (
+                <div className="space-y-5">
+                  <div className="flex gap-1.5 bg-ink/40 p-1 rounded-lg border border-line w-fit">
+                    {(["overview", "priorities", "pipeline"] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        onClick={() => setMissionTab(tab)}
+                        className={`px-4 py-1.5 rounded-md text-xs font-semibold uppercase tracking-wider transition ${
+                          missionTab === tab
+                            ? "bg-cyanx text-ink shadow-sm"
+                            : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+                        }`}
+                      >
+                        {tab === "overview" && "Dashboard"}
+                        {tab === "priorities" && "Priority Queue"}
+                        {tab === "pipeline" && "Pipeline Status"}
+                      </button>
+                    ))}
+                  </div>
+                  {missionTab === "overview" && <OverviewPage overview={overview} trends={trends} />}
+                  {missionTab === "priorities" && <PrioritiesPage priorities={priorities} />}
+                  {missionTab === "pipeline" && <PipelineStatusPage health={health} overview={overview} onRun={runPipeline} />}
+                </div>
               )}
-              {page === "coverage" && overview && <CoveragePage coverage={overview.source_coverage} />}
-              {page === "priorities" && <PrioritiesPage priorities={priorities} />}
-              {page === "feed" && <ThreatFeed documents={documents} />}
-              {page === "workbench" && (
-                <WorkbenchPage entities={entities} selected={selectedEntity} onSelect={setSelectedEntity} detail={entityDetail} />
+
+              {page === "intel_explorer" && overview && (
+                <div className="space-y-5">
+                  <div className="flex gap-1.5 bg-ink/40 p-1 rounded-lg border border-line w-fit">
+                    {(["feed", "workbench", "coverage"] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        onClick={() => setIntelTab(tab)}
+                        className={`px-4 py-1.5 rounded-md text-xs font-semibold uppercase tracking-wider transition ${
+                          intelTab === tab
+                            ? "bg-cyanx text-ink shadow-sm"
+                            : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+                        }`}
+                      >
+                        {tab === "feed" && "Threat Feed"}
+                        {tab === "workbench" && "Entity Workbench"}
+                        {tab === "coverage" && "Source Coverage"}
+                      </button>
+                    ))}
+                  </div>
+                  {intelTab === "feed" && <ThreatFeed documents={documents} />}
+                  {intelTab === "workbench" && (
+                    <WorkbenchPage entities={entities} selected={selectedEntity} onSelect={setSelectedEntity} detail={entityDetail} />
+                  )}
+                  {intelTab === "coverage" && <CoveragePage coverage={overview.source_coverage} />}
+                </div>
               )}
-              {page === "graph" && <GraphPage entities={entities} selected={selectedEntity} onSelect={setSelectedEntity} semanticGraph={semanticGraph} graphLoading={graphLoading} />}
-              {page === "attack" && <AttackCoveragePage attackLayer={attackLayer} />}
-              {page === "detections" && <DetectionBuilderPage detections={detections} />}
-              {page === "reports" && <ReportsPage report={report} entities={entities} selectedEntity={selectedEntity} />}
-              {page === "exports" && <ExportsPage report={report} detections={detections} />}
-              {page === "pipeline" && <PipelineStatusPage health={health} overview={overview} onRun={runPipeline} />}
+
+              {page === "knowledge_graph" && (
+                <GraphPage entities={entities} selected={selectedEntity} onSelect={setSelectedEntity} semanticGraph={semanticGraph} graphLoading={graphLoading} />
+              )}
+
+              {page === "reports_detections" && (
+                <div className="space-y-5">
+                  <div className="flex gap-1.5 bg-ink/40 p-1 rounded-lg border border-line w-fit">
+                    {(["reports", "attack", "detections", "exports"] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        onClick={() => setReportsTab(tab)}
+                        className={`px-4 py-1.5 rounded-md text-xs font-semibold uppercase tracking-wider transition ${
+                          reportsTab === tab
+                            ? "bg-cyanx text-ink shadow-sm"
+                            : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+                        }`}
+                      >
+                        {tab === "reports" && "Analyst Reports"}
+                        {tab === "attack" && "ATT&CK Coverage"}
+                        {tab === "detections" && "Sigma Detections"}
+                        {tab === "exports" && "Export Center"}
+                      </button>
+                    ))}
+                  </div>
+                  {reportsTab === "reports" && <ReportsPage report={report} entities={entities} selectedEntity={selectedEntity} />}
+                  {reportsTab === "attack" && <AttackCoveragePage attackLayer={attackLayer} />}
+                  {reportsTab === "detections" && <DetectionBuilderPage detections={detections} />}
+                  {reportsTab === "exports" && <ExportsPage report={report} detections={detections} />}
+                </div>
+              )}
             </>
           )}
         </section>
       </main>
+
+      <FloatingChatWidget
+        isOpen={chatOpen}
+        onToggle={() => setChatOpen(!chatOpen)}
+        messages={chatMessages}
+        input={chatInput}
+        setInput={setChatInput}
+        loading={chatLoading}
+        error={chatError}
+        citations={chatCitations}
+        caveats={chatCaveats}
+        relatedEntities={chatRelatedEntities}
+        llmConfigured={health?.llm_configured ?? false}
+        onSendPrompt={handleSendPrompt}
+        onClearChat={() => {
+          setChatMessages([]);
+          setChatCitations([]);
+          setChatCaveats([]);
+          setChatRelatedEntities([]);
+          setChatError("");
+        }}
+      />
     </div>
   );
 }
@@ -361,6 +427,10 @@ function OverviewPage({ overview, trends }: { overview: Overview; trends: TrendS
 function CoveragePage({ coverage }: { coverage: SourceCoverage }) {
   const typeData = coverage.type_mix.map((item) => ({ name: item.name, count: item.count }));
   const languageData = coverage.language_mix.map((item) => ({ name: item.name, count: item.count }));
+  const strengths = coverage.strengths || [];
+  const watchItems = coverage.watch_items || coverage.gaps || [];
+  const recommendations = coverage.recommendations || [];
+
   return (
     <div className="space-y-5">
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -437,12 +507,15 @@ function CoveragePage({ coverage }: { coverage: SourceCoverage }) {
             </ResponsiveContainer>
           </div>
         </Panel>
-        <div className="grid gap-5 md:grid-cols-2">
-          <Panel title="Coverage Gaps">
-            <SectionList items={coverage.gaps.length ? coverage.gaps : ["No major coverage gaps detected."]} />
+        <div className="space-y-4">
+          <Panel title="Coverage Strengths">
+            <SectionList items={strengths.length ? strengths : ["No major coverage strengths recorded."]} />
           </Panel>
-          <Panel title="Collection Moves">
-            <SectionList items={coverage.recommendations} />
+          <Panel title="Watch Items / Residual Gaps">
+            <SectionList items={watchItems.length ? watchItems : ["No major coverage gaps observed."]} />
+          </Panel>
+          <Panel title="Recommended Collection Moves">
+            <SectionList items={recommendations.length ? recommendations : ["No collection moves recommended."]} />
           </Panel>
         </div>
       </div>
@@ -607,17 +680,24 @@ function WorkbenchPage({
                 </ResponsiveContainer>
               </div>
             ) : null}
-            <div className="grid gap-4 xl:grid-cols-2">
-              <MiniPanel title="Enrichment">
-                <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-xs text-slate-300 scrollbar-thin">{JSON.stringify(detail.enrichments, null, 2)}</pre>
+            <div className="space-y-4">
+              <MiniPanel title="Entity Enrichment Context">
+                <EnrichmentSummary detail={detail} onSelect={onSelect} entities={entities} />
               </MiniPanel>
               <MiniPanel title="Co-Mentions">
-                <div className="space-y-2">
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {detail.co_occurring.map((entity) => (
-                    <div key={`${entity.type}-${entity.value}`} className="flex items-center justify-between rounded-lg bg-ink/40 px-3 py-2 text-sm">
-                      <span>{entity.value}</span>
-                      <span className="text-xs text-slate-400">{entity.shared_documents} shared</span>
-                    </div>
+                    <button
+                      key={`${entity.type}-${entity.value}`}
+                      onClick={() => {
+                        const existing = entities.find((e) => e.type === entity.type && e.value === entity.value);
+                        onSelect(existing ?? { type: entity.type, value: entity.value, mentions: 1 });
+                      }}
+                      className="flex items-center justify-between rounded-lg bg-ink/40 border border-line px-3 py-2 text-sm text-left hover:border-cyanx/40 hover:bg-cyanx/5 transition"
+                    >
+                      <span className="truncate mr-2">{entity.value}</span>
+                      <span className="text-[10px] text-slate-400 shrink-0">{entity.shared_documents} shared</span>
+                    </button>
                   ))}
                 </div>
               </MiniPanel>
@@ -1480,6 +1560,24 @@ function StatusLine({ label, value }: { label: string; value: string }) {
   );
 }
 
+function getSVGCoordinates(svg: SVGSVGElement | null, clientX: number, clientY: number): { x: number; y: number } {
+  if (!svg) return { x: clientX, y: clientY };
+  const pt = svg.createSVGPoint();
+  pt.x = clientX;
+  pt.y = clientY;
+  try {
+    const ctm = svg.getScreenCTM();
+    if (ctm) {
+      const transformed = pt.matrixTransform(ctm.inverse());
+      return { x: transformed.x, y: transformed.y };
+    }
+  } catch (err) {
+    console.error("Error getting SVG coordinates:", err);
+  }
+  const rect = svg.getBoundingClientRect();
+  return { x: clientX - rect.left, y: clientY - rect.top };
+}
+
 function KnowledgeGraph({
   graph,
   relationshipFilter,
@@ -1509,6 +1607,109 @@ function KnowledgeGraph({
   const positions = useMemo(() => layoutGraphNodes(visibleNodes, width, height), [visibleNodes, height]);
   const [activeNodeId, setActiveNodeId] = useState("selected");
   const [activeEdgeId, setActiveEdgeId] = useState("");
+
+  // Pan / Zoom State
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  
+  // Drag threshold to suppress clicks
+  const [pointerStart, setPointerStart] = useState({ x: 0, y: 0 });
+  const [hasDragged, setHasDragged] = useState(false);
+
+  const zoomRef = useRef(1);
+  const panRef = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  useEffect(() => {
+    panRef.current = pan;
+  }, [pan]);
+
+  // Reset zoom and pan only when the focused entity changes
+  const focusKey = semanticGraphResponse?.summary?.focus
+    ? `${semanticGraphResponse.summary.focus.type}:${semanticGraphResponse.summary.focus.value}`
+    : "";
+
+  useEffect(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, [focusKey]);
+
+  // Setup Wheel listener to prevent page scrolling
+  const svgRef = useRef<SVGSVGElement | null>(null);
+
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const zoomIntensity = 0.08;
+      let nextZoom = zoomRef.current - e.deltaY * zoomIntensity * 0.01;
+      nextZoom = Math.max(0.3, Math.min(3, nextZoom));
+
+      const svgPt = getSVGCoordinates(svg, e.clientX, e.clientY);
+      const currentZoom = zoomRef.current;
+      const currentPan = panRef.current;
+      const factor = nextZoom / currentZoom;
+
+      const newPan = {
+        x: svgPt.x - (svgPt.x - currentPan.x) * factor,
+        y: svgPt.y - (svgPt.y - currentPan.y) * factor,
+      };
+
+      setZoom(nextZoom);
+      setPan(newPan);
+    };
+
+    svg.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      svg.removeEventListener("wheel", handleWheel);
+    };
+  }, []);
+
+  const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setIsDragging(true);
+    const pt = getSVGCoordinates(svgRef.current, e.clientX, e.clientY);
+    setDragStart({ x: pt.x - pan.x, y: pt.y - pan.y });
+    setPointerStart({ x: e.clientX, y: e.clientY });
+    setHasDragged(false);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!isDragging) return;
+    const pt = getSVGCoordinates(svgRef.current, e.clientX, e.clientY);
+    setPan({
+      x: pt.x - dragStart.x,
+      y: pt.y - dragStart.y,
+    });
+
+    const dx = e.clientX - pointerStart.x;
+    const dy = e.clientY - pointerStart.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > 4) {
+      setHasDragged(true);
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!isDragging) return;
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    setIsDragging(false);
+  };
+
+  const handleSvgClickCapture = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (hasDragged) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  };
 
   useEffect(() => {
     if (!visibleNodes.some((node) => node.id === activeNodeId)) {
@@ -1544,7 +1745,7 @@ function KnowledgeGraph({
 
   return (
     <div className="grid gap-4 xl:grid-cols-[1fr_380px] text-slate-100">
-      <div className="overflow-hidden rounded-xl border border-line bg-panel shadow-glow">
+      <div className="overflow-hidden rounded-xl border border-line bg-panel shadow-glow relative">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
           <div className="text-xs font-semibold text-slate-400">
             ACTIVE LENS: <span className="text-cyanx font-bold uppercase">{relationshipFilter}</span>
@@ -1556,7 +1757,52 @@ function KnowledgeGraph({
             <Badge tone="amber">Related Intel</Badge>
           </div>
         </div>
-        <svg viewBox={`0 0 ${width} ${height}`} className="w-full bg-[#f8fafc]/50" style={{ height: Math.min(height, 840) }}>
+
+        {/* Floating Zoom / Pan controls */}
+        <div className="absolute bottom-4 left-4 z-10 flex gap-1.5 bg-panel2/85 border border-line p-1.5 rounded-lg shadow backdrop-blur">
+          <button
+            onClick={() => {
+              const nextZoom = Math.min(3, zoom + 0.15);
+              setZoom(nextZoom);
+            }}
+            className="px-2.5 py-1 text-xs font-bold bg-ink/50 border border-line rounded text-slate-300 hover:text-white transition"
+            title="Zoom In"
+          >
+            ＋
+          </button>
+          <button
+            onClick={() => {
+              const nextZoom = Math.max(0.3, zoom - 0.15);
+              setZoom(nextZoom);
+            }}
+            className="px-2.5 py-1 text-xs font-bold bg-ink/50 border border-line rounded text-slate-300 hover:text-white transition"
+            title="Zoom Out"
+          >
+            －
+          </button>
+          <button
+            onClick={() => {
+              setZoom(1);
+              setPan({ x: 0, y: 0 });
+            }}
+            className="px-2.5 py-1 text-xs font-bold bg-ink/50 border border-line rounded text-slate-300 hover:text-white transition"
+            title="Fit View"
+          >
+            ⟲ Fit View
+          </button>
+        </div>
+
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${width} ${height}`}
+          className="w-full bg-[#f8fafc]/50 cursor-grab active:cursor-grabbing select-none"
+          style={{ height: Math.min(height, 840) }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          onClickCapture={handleSvgClickCapture}
+        >
           <defs>
             <marker id="kg-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
               <path d="M0,0 L0,6 L9,3 z" fill="#94a3b8" />
@@ -1565,82 +1811,84 @@ function KnowledgeGraph({
               <path d="M0,0 L0,6 L9,3 z" fill="#0ea5e9" />
             </marker>
           </defs>
-          <g opacity="0.15">
-            <rect x="34" y="58" width="228" height={height - 96} rx="18" fill="#e2e8f0" stroke="#cbd5e1" />
-            <rect x="330" y="58" width="326" height={height - 96} rx="18" fill="#e0f2fe" stroke="#bae6fd" />
-            <rect x="734" y="58" width="214" height={height - 96} rx="18" fill="#fee2e2" stroke="#fca5a5" />
-            <rect x="1100" y="58" width="338" height={height - 96} rx="18" fill="#fef3c7" stroke="#fde68a" />
-          </g>
-          <g fill="#475569" fontSize="11" fontWeight="800" letterSpacing="0.1em">
-            <text x="148" y="34" textAnchor="middle">OSINT SOURCES</text>
-            <text x="493" y="34" textAnchor="middle">EVIDENCE DOCUMENTS</text>
-            <text x="842" y="34" textAnchor="middle">FOCUS ENTITY</text>
-            <text x={width - 210} y="34" textAnchor="middle">RELATED INTEL</text>
-          </g>
-          {visibleEdges.map((edge) => {
-            const sourceNode = visibleNodes.find((node) => node.id === edge.source);
-            const targetNode = visibleNodes.find((node) => node.id === edge.target);
-            const sourceCenter = positions[edge.source];
-            const targetCenter = positions[edge.target];
-            if (!sourceNode || !targetNode || !sourceCenter || !targetCenter) return null;
-            const source = nodeEdgePoint(sourceNode, sourceCenter, Math.sign(targetCenter.x - sourceCenter.x) || 1);
-            const target = nodeEdgePoint(targetNode, targetCenter, Math.sign(sourceCenter.x - targetCenter.x) || -1);
-            const highlighted = contextEdgeKeys.has(edgeKey(edge));
-            const muted = !highlighted && Boolean(activeNode && activeNode.id !== "selected");
-            const path = relationshipPath(source, target);
-            const label = edge.predicate ?? edge.label;
-            const truncatedLabel = label.length > 22 ? truncate(label, 22) : label;
-            const labelPosition = relationshipLabelPosition(source, target);
-            const showLabel = edgeKey(edge) === activeEdgeId || (!activeEdgeId && activeNode?.id !== "selected" && highlighted && connectedEdges.length <= 10);
-            return (
-              <g
-                key={edgeKey(edge)}
-                className="cursor-pointer"
-                onClick={() => {
-                  setActiveEdgeId(edgeKey(edge));
-                  setActiveNodeId("");
-                }}
-              >
-                <path
-                  d={path}
-                  fill="none"
-                  stroke={highlighted ? "#0ea5e9" : "#94a3b8"}
-                  strokeWidth={highlighted ? 3.0 : 1.4}
-                  strokeOpacity={muted ? 0.12 : highlighted ? 0.9 : 0.4}
-                  markerEnd={highlighted ? "url(#kg-arrow-active)" : "url(#kg-arrow)"}
-                  strokeDasharray={edge.category === "noise/reference" ? "4,4" : undefined}
+          <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
+            <g opacity="0.15">
+              <rect x="34" y="58" width="228" height={height - 96} rx="18" fill="#e2e8f0" stroke="#cbd5e1" />
+              <rect x="330" y="58" width="326" height={height - 96} rx="18" fill="#e0f2fe" stroke="#bae6fd" />
+              <rect x="734" y="58" width="214" height={height - 96} rx="18" fill="#fee2e2" stroke="#fca5a5" />
+              <rect x="1100" y="58" width="338" height={height - 96} rx="18" fill="#fef3c7" stroke="#fde68a" />
+            </g>
+            <g fill="#475569" fontSize="11" fontWeight="800" letterSpacing="0.1em">
+              <text x="148" y="34" textAnchor="middle">OSINT SOURCES</text>
+              <text x="493" y="34" textAnchor="middle">EVIDENCE DOCUMENTS</text>
+              <text x="842" y="34" textAnchor="middle">FOCUS ENTITY</text>
+              <text x={width - 210} y="34" textAnchor="middle">RELATED INTEL</text>
+            </g>
+            {visibleEdges.map((edge) => {
+              const sourceNode = visibleNodes.find((node) => node.id === edge.source);
+              const targetNode = visibleNodes.find((node) => node.id === edge.target);
+              const sourceCenter = positions[edge.source];
+              const targetCenter = positions[edge.target];
+              if (!sourceNode || !targetNode || !sourceCenter || !targetCenter) return null;
+              const source = nodeEdgePoint(sourceNode, sourceCenter, Math.sign(targetCenter.x - sourceCenter.x) || 1);
+              const target = nodeEdgePoint(targetNode, targetCenter, Math.sign(sourceCenter.x - targetCenter.x) || -1);
+              const highlighted = contextEdgeKeys.has(edgeKey(edge));
+              const muted = !highlighted && Boolean(activeNode && activeNode.id !== "selected");
+              const path = relationshipPath(source, target);
+              const label = edge.predicate ?? edge.label;
+              const truncatedLabel = label.length > 22 ? truncate(label, 22) : label;
+              const labelPosition = relationshipLabelPosition(source, target);
+              const showLabel = edgeKey(edge) === activeEdgeId || (!activeEdgeId && activeNode?.id !== "selected" && highlighted && connectedEdges.length <= 10);
+              return (
+                <g
+                  key={edgeKey(edge)}
+                  className="cursor-pointer"
+                  onClick={() => {
+                    setActiveEdgeId(edgeKey(edge));
+                    setActiveNodeId("");
+                  }}
+                >
+                  <path
+                    d={path}
+                    fill="none"
+                    stroke={highlighted ? "#0ea5e9" : "#94a3b8"}
+                    strokeWidth={highlighted ? 3.0 : 1.4}
+                    strokeOpacity={muted ? 0.12 : highlighted ? 0.9 : 0.4}
+                    markerEnd={highlighted ? "url(#kg-arrow-active)" : "url(#kg-arrow)"}
+                    strokeDasharray={edge.category === "noise/reference" ? "4,4" : undefined}
+                  />
+                  {showLabel ? (
+                    <g transform={`translate(${labelPosition.x}, ${labelPosition.y})`}>
+                      <rect x={-(truncatedLabel.length * 3.5 + 11)} y="-12" width={truncatedLabel.length * 7 + 22} height="22" rx="7" fill="#ffffff" stroke={highlighted ? "#0ea5e9" : "#d8e0ea"} strokeWidth={highlighted ? 2 : 1} />
+                      <text textAnchor="middle" dominantBaseline="middle" fill={highlighted ? "#0ea5e9" : "#334155"} fontSize="10" fontWeight="700">
+                        {truncatedLabel}
+                      </text>
+                    </g>
+                  ) : null}
+                </g>
+              );
+            })}
+            {visibleNodes.map((node) => {
+              const pos = positions[node.id];
+              if (!pos) return null;
+              const active = node.id === activeNode?.id;
+              const muted = Boolean(activeNode && activeNode.id !== "selected" && !connectedNodeIds.has(node.id));
+              return (
+                <GraphSvgNode
+                  key={node.id}
+                  node={node}
+                  x={pos.x}
+                  y={pos.y}
+                  active={active}
+                  muted={muted}
+                  onClick={() => {
+                    setActiveNodeId(node.id);
+                    setActiveEdgeId("");
+                  }}
                 />
-                {showLabel ? (
-                  <g transform={`translate(${labelPosition.x}, ${labelPosition.y})`}>
-                    <rect x={-(truncatedLabel.length * 3.5 + 11)} y="-12" width={truncatedLabel.length * 7 + 22} height="22" rx="7" fill="#ffffff" stroke={highlighted ? "#0ea5e9" : "#d8e0ea"} strokeWidth={highlighted ? 2 : 1} />
-                    <text textAnchor="middle" dominantBaseline="middle" fill={highlighted ? "#0ea5e9" : "#334155"} fontSize="10" fontWeight="700">
-                      {truncatedLabel}
-                    </text>
-                  </g>
-                ) : null}
-              </g>
-            );
-          })}
-          {visibleNodes.map((node) => {
-            const pos = positions[node.id];
-            if (!pos) return null;
-            const active = node.id === activeNode?.id;
-            const muted = Boolean(activeNode && activeNode.id !== "selected" && !connectedNodeIds.has(node.id));
-            return (
-              <GraphSvgNode
-                key={node.id}
-                node={node}
-                x={pos.x}
-                y={pos.y}
-                active={active}
-                muted={muted}
-                onClick={() => {
-                  setActiveNodeId(node.id);
-                  setActiveEdgeId("");
-                }}
-              />
-            );
-          })}
+              );
+            })}
+          </g>
         </svg>
       </div>
       <GraphInspector
@@ -2169,7 +2417,9 @@ function truncate(value: string, length: number) {
   return value.length > length ? `${value.slice(0, length - 1)}...` : value;
 }
 
-function ChatPage({
+function FloatingChatWidget({
+  isOpen,
+  onToggle,
   messages,
   input,
   setInput,
@@ -2182,6 +2432,8 @@ function ChatPage({
   onSendPrompt,
   onClearChat,
 }: {
+  isOpen: boolean;
+  onToggle: () => void;
   messages: Array<{ role: "user" | "assistant"; content: string }>;
   input: string;
   setInput: (v: string) => void;
@@ -2197,69 +2449,77 @@ function ChatPage({
   const SUGGESTED_PROMPTS = [
     "What are the top critical threats?",
     "Summarize phishing activity.",
-    "What data sources are weakest?",
-    "Explain recent malware indicators.",
-    "Which CVEs have the highest priority?",
-    "What multilingual intelligence do we have?"
+    "Which CVEs have the highest priority?"
   ];
 
   return (
-    <div className="space-y-5">
-      {!llmConfigured ? (
-        <div className="rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger flex flex-col gap-2">
-          <div className="font-semibold text-base">LLM Analyst Chat Disabled</div>
-          <div>The chat interface is retrieval-augmented but requires a configured LLM provider to formulate analyst answers.</div>
-          <div className="text-xs font-mono bg-ink/30 p-2 rounded mt-1 border border-line/50">
-            Configure in your .env:<br />
-            LLM_PROVIDER=openai_compatible<br />
-            LLM_API_KEY=your_key_here<br />
-            LLM_BASE_URL=...
-          </div>
-        </div>
-      ) : null}
+    <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end">
+      {/* Collapsed Chat Pill */}
+      <button
+        onClick={onToggle}
+        className="flex h-14 w-14 items-center justify-center rounded-full bg-cyanx text-ink shadow-lg hover:bg-sky-400 transition transform hover:scale-105 active:scale-95"
+        title="Open Analyst Copilot"
+      >
+        <Brain className="h-6 w-6" />
+      </button>
 
-      <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
-        {/* Main Chat Panel */}
-        <div className="flex flex-col rounded-xl border border-line bg-panel p-4 shadow-glow min-h-[600px] justify-between">
-          <div className="flex items-center justify-between border-b border-line pb-3 mb-4">
-            <h2 className="text-base font-semibold text-slate-100 flex items-center gap-2">
+      {/* Expanded chat panel */}
+      {isOpen && (
+        <div className="w-[calc(100vw-32px)] sm:w-[420px] fixed bottom-20 right-4 sm:right-5 flex max-h-[70vh] flex-col rounded-xl border border-line bg-panel shadow-glow overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-line bg-panel2 px-4 py-3">
+            <div className="flex items-center gap-2">
               <Brain className="h-5 w-5 text-cyanx" />
-              CTI Analyst Chat Session
-            </h2>
-            {messages.length > 0 ? (
+              <span className="font-semibold text-sm text-slate-200">Analyst Copilot</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {messages.length > 0 && (
+                <button
+                  onClick={onClearChat}
+                  className="text-[10px] px-2 py-0.5 rounded border border-line bg-ink/30 hover:bg-ink hover:text-white transition"
+                >
+                  Clear
+                </button>
+              )}
               <button
-                onClick={onClearChat}
-                className="text-xs px-2 py-1 rounded border border-line bg-ink/30 hover:bg-ink hover:text-white transition"
+                onClick={onToggle}
+                className="text-slate-400 hover:text-slate-200 text-xs font-semibold px-1"
               >
-                Clear History
+                ✕
               </button>
-            ) : null}
+            </div>
           </div>
 
-          {error ? (
-            <div className="rounded-lg border border-amberx/30 bg-amberx/10 p-3 text-sm text-amber-100 mb-4">
-              <div className="font-semibold mb-1">Copilot Notification</div>
-              <div>{error}</div>
+          {/* Warning state if not configured */}
+          {!llmConfigured && (
+            <div className="bg-danger/10 border-b border-danger/20 p-3 text-[11px] text-danger">
+              <div className="font-bold">LLM Chat Disabled</div>
+              Configure LLM_PROVIDER & LLM_API_KEY in .env.
             </div>
-          ) : null}
+          )}
 
-          {/* Transcript Area */}
-          <div className="flex-1 overflow-y-auto max-h-[500px] mb-4 space-y-4 pr-2 scrollbar-thin flex flex-col">
+          {/* Scrollable Chat Area */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin max-h-[40vh]">
+            {error && (
+              <div className="rounded border border-amberx/20 bg-amberx/10 p-2 text-xs text-amber-200">
+                {error}
+              </div>
+            )}
+
             {messages.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-center p-8 my-auto text-slate-400">
-                <div className="grid h-16 w-16 place-items-center rounded-2xl border border-cyanx/20 bg-cyanx/5 mb-4">
-                  <Brain className="h-8 w-8 text-cyanx" />
-                </div>
-                <h3 className="text-lg font-semibold text-slate-200 mb-2">Ready to Assist</h3>
-                <p className="max-w-md text-sm leading-relaxed">
-                  Ask me questions about CISA vulnerabilities, OSINT feeds, trending entities, or social media coverage. I will retrieve context from the local threat intelligence database first.
+              <div className="text-center py-6 text-slate-400">
+                <Brain className="h-8 w-8 text-cyanx/40 mx-auto mb-2" />
+                <h4 className="text-xs font-semibold text-slate-200 mb-1">Local CTI Assistant</h4>
+                <p className="text-[11px] leading-relaxed max-w-[280px] mx-auto">
+                  Ask me about local CVEs, threat feeds, or OSINT coverage gaps.
                 </p>
-                <div className="mt-6 flex flex-wrap gap-2 justify-center max-w-lg">
-                  {SUGGESTED_PROMPTS.slice(0, 3).map((prompt) => (
+                <div className="mt-4 flex flex-col gap-1.5">
+                  {SUGGESTED_PROMPTS.map((prompt) => (
                     <button
                       key={prompt}
                       onClick={() => onSendPrompt(prompt)}
-                      className="rounded-full border border-line bg-ink/30 px-3 py-1.5 text-xs text-slate-300 hover:bg-cyanx/10 hover:border-cyanx/30 transition"
+                      disabled={!llmConfigured || loading}
+                      className="rounded border border-line bg-ink/30 px-3 py-1.5 text-[10px] text-slate-300 hover:bg-cyanx/10 hover:border-cyanx/30 transition text-left"
                     >
                       {prompt}
                     </button>
@@ -2270,36 +2530,80 @@ function ChatPage({
               messages.map((msg, i) => (
                 <div
                   key={i}
-                  className={`flex flex-col max-w-[85%] rounded-xl p-3 border ${
+                  className={`flex flex-col max-w-[85%] rounded-lg p-2.5 border text-xs leading-relaxed ${
                     msg.role === "user"
                       ? "bg-cyanx/10 border-cyanx/20 self-end text-slate-100"
                       : "bg-ink/30 border-line self-start text-slate-200"
                   }`}
                 >
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                    {msg.role === "user" ? "Analyst Question" : "Copilot Answer"}
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    {msg.role === "user" ? "Analyst" : "Copilot"}
                   </div>
-                  <div className="text-sm whitespace-pre-wrap leading-relaxed">
-                    {msg.content}
-                  </div>
+                  <div className="whitespace-pre-wrap">{msg.content}</div>
                 </div>
               ))
             )}
 
-            {loading ? (
-              <div className="flex flex-col max-w-[85%] rounded-xl p-3 border bg-ink/30 border-line self-start text-slate-200">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                  Copilot Answer
+            {loading && (
+              <div className="flex flex-col max-w-[85%] rounded-lg p-2.5 border bg-ink/30 border-line self-start text-slate-200 text-xs">
+                <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                  Copilot
                 </div>
-                <div className="flex items-center gap-2 text-sm text-slate-400">
-                  <span className="h-2 w-2 rounded-full bg-cyanx animate-pulse"></span>
-                  Retrieving intelligence and compiling response...
+                <div className="flex items-center gap-1.5 text-slate-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-cyanx animate-pulse"></span>
+                  Thinking...
                 </div>
               </div>
-            ) : null}
+            )}
           </div>
 
-          {/* Input Box */}
+          {/* Context Info (Citations, Caveats, Related Entities) */}
+          {(citations.length > 0 || caveats.length > 0 || relatedEntities.length > 0) && (
+            <div className="border-t border-line bg-panel2/50 p-3 space-y-2 text-[10px] max-h-[15vh] overflow-y-auto scrollbar-thin">
+              {citations.length > 0 && (
+                <div>
+                  <span className="font-bold text-slate-300 uppercase">Citations:</span>
+                  <div className="mt-1 space-y-1">
+                    {citations.map((c, idx) => (
+                      <a
+                        key={idx}
+                        href={c.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block text-cyanx hover:underline truncate"
+                      >
+                        [{idx + 1}] {c.title} ({c.source_name})
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {caveats.length > 0 && (
+                <div>
+                  <span className="font-bold text-amberx uppercase">Caveats:</span>
+                  <ul className="list-disc pl-3 text-slate-400 space-y-0.5 mt-0.5">
+                    {caveats.map((c, idx) => (
+                      <li key={idx}>{c}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {relatedEntities.length > 0 && (
+                <div>
+                  <span className="font-bold text-slate-300 uppercase">Related Entities:</span>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {relatedEntities.map((e, idx) => (
+                      <span key={idx} className="bg-ink/50 border border-line rounded px-1 text-slate-300">
+                        {e.type}: {e.value}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Form Input */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -2307,98 +2611,223 @@ function ChatPage({
                 onSendPrompt(input);
               }
             }}
-            className="flex items-center gap-2 border-t border-line pt-3 mt-auto"
+            className="flex items-center gap-1.5 border-t border-line p-2 bg-panel2"
           >
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               disabled={loading || !llmConfigured}
-              placeholder={llmConfigured ? "Query intelligence database (e.g. 'Show recent CVE-2024-3400 sightings')" : "LLM provider is not configured"}
-              className="flex-1 rounded-lg border border-line bg-ink/50 px-3 py-2 text-sm text-slate-100 outline-none focus:border-cyanx/50 transition disabled:opacity-50"
+              placeholder={llmConfigured ? "Ask Analyst Copilot..." : "Chat disabled"}
+              className="flex-1 rounded border border-line bg-ink/50 px-2.5 py-1.5 text-xs text-slate-100 outline-none focus:border-cyanx/50 transition disabled:opacity-50"
             />
             <button
               type="submit"
               disabled={loading || !input.trim() || !llmConfigured}
-              className="rounded-lg bg-cyanx px-4 py-2 text-sm font-semibold text-ink hover:bg-sky-700 transition disabled:opacity-40"
+              className="rounded bg-cyanx px-3 py-1.5 text-xs font-semibold text-ink hover:bg-sky-500 transition disabled:opacity-40"
             >
               Send
             </button>
           </form>
         </div>
+      )}
+    </div>
+  );
+}
 
-        {/* Right Sidebar Panel */}
-        <div className="space-y-5">
-          {/* Suggested Prompts */}
-          <Panel title="Suggested Analyst Prompts">
-            <div className="space-y-2">
-              {SUGGESTED_PROMPTS.map((prompt) => (
-                <button
-                  key={prompt}
-                  onClick={() => onSendPrompt(prompt)}
-                  disabled={loading || !llmConfigured}
-                  className="w-full text-left rounded-lg border border-line bg-ink/30 px-3 py-2.5 text-xs font-semibold text-slate-300 hover:bg-cyanx/10 hover:border-cyanx/30 hover:text-slate-100 transition disabled:opacity-50"
-                >
-                  {prompt}
-                </button>
-              ))}
+function EnrichmentSummary({
+  detail,
+  onSelect,
+  entities,
+}: {
+  detail: EntityDetail;
+  onSelect?: (entity: EntitySummary) => void;
+  entities?: EntitySummary[];
+}) {
+  const enrichments = detail.enrichments || [];
+
+  const nvd = enrichments.find(e => e.provider === "nvd");
+  const epss = enrichments.find(e => e.provider === "first_epss");
+  const mitre = enrichments.find(e => e.provider === "mitre_attack");
+
+  const relatedCVEs = (detail.co_occurring || []).filter(
+    (item) => item.type === "cve" && item.enrichments && item.enrichments.length > 0
+  );
+
+  const hasDirectEnrichment = nvd || epss || mitre;
+  const isVendorProductDomain = ["vendor", "product", "domain"].includes(detail.type);
+
+  return (
+    <div className="space-y-4 text-slate-100">
+      {/* Explanation Banner */}
+      <div className="rounded-lg border border-cyanx/20 bg-cyanx/5 p-3 text-xs leading-relaxed text-slate-300">
+        <span className="font-semibold text-cyanx">About Enrichment:</span> Enrichment integrates context from external sources like the National Vulnerability Database (NVD) for CVE details, FIRST EPSS for exploit likelihood, and MITRE ATT&CK for tactical alignment.
+      </div>
+
+      {/* Provider Cards */}
+      {hasDirectEnrichment ? (
+        <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
+          {nvd && (
+            <div className="rounded-xl border border-line bg-panel p-4 shadow-sm space-y-3">
+              <div className="flex items-center justify-between border-b border-line pb-2">
+                <span className="text-xs font-bold text-slate-400 tracking-wider">NVD ENRICHMENT</span>
+                <Badge tone={nvd.payload.severity === "CRITICAL" || nvd.payload.severity === "HIGH" ? "red" : "amber"}>
+                  {String(nvd.payload.severity ?? "UNKNOWN")}
+                </Badge>
+              </div>
+              <div className="space-y-2">
+                {nvd.payload.cvss_score !== undefined && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-slate-200">CVSS v3 Score:</span>
+                    <span className="text-base font-bold text-white bg-red-600/10 px-2 py-0.5 rounded border border-red-500/20">
+                      {String(nvd.payload.cvss_score)}
+                    </span>
+                  </div>
+                )}
+                {!!nvd.payload.description && (
+                  <p className="text-xs leading-relaxed text-slate-400">
+                    {String(nvd.payload.description)}
+                  </p>
+                )}
+                {Array.isArray(nvd.payload.references) && nvd.payload.references.length > 0 && (
+                  <div className="pt-2 border-t border-line/50">
+                    <span className="text-[10px] font-bold text-slate-400 block mb-1.5 uppercase">References:</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {nvd.payload.references.slice(0, 3).map((ref: any, idx: number) => (
+                        <a
+                          key={idx}
+                          href={String(ref)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded bg-ink/40 text-[10px] text-cyanx hover:bg-cyanx/10 hover:text-white transition max-w-[200px] truncate"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          Advisory {idx + 1}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-          </Panel>
+          )}
 
-          {/* Citations Panel */}
-          {citations.length > 0 ? (
-            <Panel title="Evidence Citations">
-              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 scrollbar-thin">
-                {citations.map((citation, index) => (
+          {epss && (
+            <div className="rounded-xl border border-line bg-panel p-4 shadow-sm space-y-3">
+              <div className="flex items-center justify-between border-b border-line pb-2">
+                <span className="text-xs font-bold text-slate-400 tracking-wider">FIRST EPSS EXPLOIT LIKELIHOOD</span>
+                <Badge tone="blue">EPSS v3</Badge>
+              </div>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2 text-center">
+                  <div className="bg-ink/30 border border-line rounded-lg p-2">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Probability</div>
+                    <div className="text-lg font-bold text-white mt-1">
+                      {epss.payload.epss !== undefined ? `${(parseFloat(String(epss.payload.epss)) * 100).toFixed(2)}%` : "N/A"}
+                    </div>
+                  </div>
+                  <div className="bg-ink/30 border border-line rounded-lg p-2">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Percentile</div>
+                    <div className="text-lg font-bold text-white mt-1">
+                      {epss.payload.percentile !== undefined ? `${(parseFloat(String(epss.payload.percentile)) * 100).toFixed(2)}%` : "N/A"}
+                    </div>
+                  </div>
+                </div>
+                {!!epss.payload.date && (
+                  <div className="text-[10px] text-slate-500 text-right">
+                    As of: {String(epss.payload.date)}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {mitre && (
+            <div className="rounded-xl border border-line bg-panel p-4 shadow-sm space-y-3 md:col-span-2">
+              <div className="flex items-center justify-between border-b border-line pb-2">
+                <span className="text-xs font-bold text-slate-400 tracking-wider">MITRE ATT&CK TECHNIQUE</span>
+                <Badge tone="green">{String(mitre.payload.tactic ?? "Tactic Unknown")}</Badge>
+              </div>
+              <div className="space-y-2">
+                <h4 className="text-sm font-bold text-white">
+                  {String(mitre.payload.name ?? detail.value)}
+                </h4>
+                {!!mitre.payload.description && (
+                  <p className="text-xs leading-relaxed text-slate-400">
+                    {String(mitre.payload.description)}
+                  </p>
+                )}
+                {!!mitre.payload.url && (
                   <a
-                    key={index}
-                    href={citation.url}
+                    href={String(mitre.payload.url)}
                     target="_blank"
                     rel="noreferrer"
-                    className="block rounded-lg border border-line bg-ink/40 p-3 hover:border-cyanx/40 transition group"
+                    className="inline-flex items-center gap-1.5 text-xs text-cyanx hover:underline"
                   >
-                    <div className="flex items-center justify-between gap-1 text-[10px] font-bold text-cyanx uppercase mb-1">
-                      <span>{truncate(citation.source_name, 25)}</span>
-                      <span className="text-slate-500">ID: {citation.document_id}</span>
-                    </div>
-                    <div className="text-xs font-medium text-slate-200 group-hover:text-cyanx line-clamp-2">
-                      {citation.title}
-                    </div>
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    View MITRE ATT&CK Wiki
                   </a>
-                ))}
+                )}
               </div>
-            </Panel>
-          ) : null}
-
-          {/* Caveats Panel */}
-          {caveats.length > 0 ? (
-            <Panel title="Analyst Caveats">
-              <ul className="space-y-2 text-xs text-slate-400">
-                {caveats.map((caveat, index) => (
-                  <li key={index} className="flex gap-2 items-start">
-                    <span className="text-amberx font-semibold">!</span>
-                    <span>{caveat}</span>
-                  </li>
-                ))}
-              </ul>
-            </Panel>
-          ) : null}
-
-          {/* Related Entities */}
-          {relatedEntities.length > 0 ? (
-            <Panel title="Related Entities">
-              <div className="flex flex-wrap gap-1.5">
-                {relatedEntities.map((entity, index) => (
-                  <Badge key={index} tone="blue">
-                    <span className="opacity-60 mr-1">{entity.type}:</span>
-                    {entity.value}
-                  </Badge>
-                ))}
-              </div>
-            </Panel>
-          ) : null}
+            </div>
+          )}
         </div>
-      </div>
+      ) : (
+        <div className="rounded-xl border border-dashed border-line bg-ink/10 p-5 text-center text-slate-400">
+          <AlertTriangle className="h-6 w-6 text-slate-500 mx-auto mb-2" />
+          <p className="text-xs leading-relaxed max-w-md mx-auto">
+            No direct enrichment for this entity. Enrichment is currently available for CVEs and ATT&CK techniques.
+            Select a CVE such as <span className="font-semibold text-slate-300">CVE-2024-3400</span> or <span className="font-semibold text-slate-300">CVE-2023-34362</span> to view NVD/EPSS context.
+          </p>
+        </div>
+      )}
+
+      {/* Related Enriched CVEs for Vendor/Product/Domain */}
+      {isVendorProductDomain && (
+        <div className="border-t border-line pt-4 space-y-3">
+          <h4 className="text-xs font-bold text-slate-400 tracking-wider uppercase">
+            Related Enriched CVEs ({relatedCVEs.length})
+          </h4>
+          {relatedCVEs.length > 0 ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {relatedCVEs.map((cve) => {
+                const cveNvd = cve.enrichments?.find(e => e.provider === "nvd");
+                const cveEpss = cve.enrichments?.find(e => e.provider === "first_epss");
+                return (
+                  <button
+                    key={cve.value}
+                    onClick={() => {
+                      if (onSelect) {
+                        const existing = entities?.find((item) => item.type === "cve" && item.value === cve.value);
+                        onSelect(existing ?? { type: "cve", value: cve.value, mentions: cve.shared_documents });
+                      }
+                    }}
+                    className="w-full text-left rounded-lg border border-line bg-panel2/40 p-3 space-y-2 hover:border-cyanx/50 hover:bg-cyanx/5 transition"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-slate-200 text-xs">{cve.value}</span>
+                      <Badge tone={cveNvd?.payload.severity === "CRITICAL" ? "red" : "amber"}>
+                        {String(cveNvd?.payload.severity ?? "HIGH")}
+                      </Badge>
+                    </div>
+                    <div className="text-[10px] text-slate-400 space-y-1">
+                      {cveNvd?.payload.cvss_score !== undefined && (
+                        <div>CVSS score: <span className="font-semibold text-slate-200">{String(cveNvd.payload.cvss_score)}</span></div>
+                      )}
+                      {cveEpss?.payload.epss !== undefined && (
+                        <div>EPSS probability: <span className="font-semibold text-slate-200">{(parseFloat(String(cveEpss.payload.epss)) * 100).toFixed(2)}%</span></div>
+                      )}
+                      <div className="text-[9px] text-slate-500 italic mt-1">Co-mentioned across {cve.shared_documents} document(s)</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-[11px] text-slate-500 italic">No co-mentioned CVEs have active enrichment records.</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
