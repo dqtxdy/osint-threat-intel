@@ -129,15 +129,24 @@ def entity_detail(entity_type: str, value: str, days: int = 3650) -> dict[str, A
     store = get_store()
     normalized_value = unquote(value)
     docs = [_document_row(row) for row in store.entity_documents(entity_type, normalized_value, limit=50)]
+    
+    co_occurring = []
+    for row in store.co_occurring_entities(entity_type, normalized_value, limit=25):
+        item = {
+            "type": row["entity_type"],
+            "value": row["normalized_value"],
+            "shared_documents": row["shared_documents"],
+        }
+        if row["entity_type"] == "cve":
+            item["enrichments"] = store.entity_enrichments("cve", row["normalized_value"])
+        co_occurring.append(item)
+
     return {
         "type": entity_type,
         "value": normalized_value,
         "documents": docs,
         "enrichments": store.entity_enrichments(entity_type, normalized_value),
-        "co_occurring": [
-            {"type": row["entity_type"], "value": row["normalized_value"], "shared_documents": row["shared_documents"]}
-            for row in store.co_occurring_entities(entity_type, normalized_value, limit=25)
-        ],
+        "co_occurring": co_occurring,
         "timeline": store.entity_timeline(entity_type, normalized_value, days=days),
     }
 
