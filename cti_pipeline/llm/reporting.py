@@ -120,10 +120,25 @@ def _call_openai_compatible(settings: Settings, context: dict[str, Any]) -> LLMA
     )
     response.raise_for_status()
     content = response.json()["choices"][0]["message"]["content"]
+    
+    # Sanitize response
+    cleaned_content = content.strip()
+    if cleaned_content.startswith("```json"):
+        cleaned_content = cleaned_content.removeprefix("```json").strip()
+    elif cleaned_content.startswith("```"):
+        cleaned_content = cleaned_content.removeprefix("```").strip()
+    if cleaned_content.endswith("```"):
+        cleaned_content = cleaned_content.removesuffix("```").strip()
+    
+    start_idx = cleaned_content.find("{")
+    end_idx = cleaned_content.rfind("}")
+    if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+        cleaned_content = cleaned_content[start_idx:end_idx + 1]
+
     try:
-        return LLMAnalystReport.model_validate_json(content)
+        return LLMAnalystReport.model_validate_json(cleaned_content)
     except ValidationError as exc:
-        raise ValueError(f"LLM returned invalid report JSON: {exc}") from exc
+        raise ValueError(f"LLM returned invalid report JSON: {exc}. Original content: {content}") from exc
 
 
 def _system_prompt() -> str:

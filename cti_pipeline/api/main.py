@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import unquote
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel, Field
 
 from cti_pipeline.analysis.prioritization import build_priority_findings
 from cti_pipeline.analysis.source_coverage import build_source_coverage
@@ -344,6 +345,30 @@ def gemini_report(days: int = 3650) -> str:
         return build_llm_report(get_store(), settings, days=days)
     except LLMDisabledError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=4000)
+
+
+class ChatRequest(BaseModel):
+    messages: list[ChatMessage] = Field(min_length=1, max_length=12)
+    days: int = Field(default=3650, ge=1, le=3650)
+
+
+@app.post("/api/chat")
+def api_chat(request: ChatRequest) -> Any:
+    settings = load_settings()
+    store = get_store()
+    try:
+        from cti_pipeline.llm.chat import build_chat_response
+        msgs = [{"role": m.role, "content": m.content} for m in request.messages]
+        return build_chat_response(store, settings, msgs, days=request.days)
+    except LLMDisabledError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Unexpected failure: {str(exc)}") from exc
 
 
 def _document_row(row: Any) -> dict[str, Any]:
