@@ -46,6 +46,8 @@ export type SourceCoverage = {
   language_mix: DistributionItem[];
   gaps: string[];
   recommendations: string[];
+  strengths?: string[];
+  watch_items?: string[];
 };
 
 export type Health = {
@@ -136,7 +138,7 @@ export type EntityDetail = {
   value: string;
   documents: DocumentItem[];
   enrichments: Enrichment[];
-  co_occurring: Array<{ type: string; value: string; shared_documents: number }>;
+  co_occurring: Array<{ type: string; value: string; shared_documents: number; enrichments?: Enrichment[] }>;
   timeline: Array<{ day: string; mentions: number; source_count: number }>;
 };
 
