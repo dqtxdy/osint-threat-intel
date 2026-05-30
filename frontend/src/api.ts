@@ -39,7 +39,15 @@ export const api = {
     if (options?.value) params.set("value", options.value);
     return getText(`/api/report?${params.toString()}`);
   },
-  detections: (days: number) => getText(`/api/detections?days=${days}`),
+  detections: (days: number, options?: { entityTypes?: string; category?: string; product?: string; minPriority?: string; limit?: number }) => {
+    const params = new URLSearchParams({ days: String(days) });
+    if (options?.entityTypes) params.set("entity_types", options.entityTypes);
+    if (options?.category) params.set("category", options.category);
+    if (options?.product) params.set("product", options.product);
+    if (options?.minPriority) params.set("min_priority", options.minPriority);
+    if (options?.limit) params.set("limit", String(options.limit));
+    return getText(`/api/detections?${params.toString()}`);
+  },
   attackLayer: (days: number) => getJson<AttackLayer>(`/api/attack-layer?days=${days}`),
   stix: (days: number) => getJson<Record<string, unknown>>(`/api/export-stix?days=${days}`),
   intelligencePack: (days: number) => getJson<Record<string, unknown>>(`/api/export-pack?days=${days}`),

@@ -1735,23 +1735,173 @@ function AttackCoveragePage({ attackLayer }: { attackLayer: AttackLayer | null }
 }
 
 function DetectionBuilderPage({ detections }: { detections: string }) {
+  const [renderedRules, setRenderedRules] = useState(detections);
+  const [minPriority, setMinPriority] = useState<"low" | "medium" | "high" | "critical">("low");
+  const [selectedTypes, setSelectedTypes] = useState<string[]>(["cve", "attack_technique", "domain", "ip", "url"]);
+  const [customCategory, setCustomCategory] = useState("");
+  const [customProduct, setCustomProduct] = useState("");
+  const [limit, setLimit] = useState(10);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const toggleType = (type: string) => {
+    setSelectedTypes(prev =>
+      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+    );
+  };
+
+  useEffect(() => {
+    let active = true;
+    async function fetchCustomDetections() {
+      setLoading(true);
+      setError("");
+      try {
+        const typesStr = selectedTypes.join(",");
+        const customRules = await api.detections(DAYS, {
+          entityTypes: typesStr || "none",
+          category: customCategory.trim() || undefined,
+          product: customProduct.trim() || undefined,
+          minPriority: minPriority,
+          limit: limit,
+        });
+        if (active) {
+          setRenderedRules(customRules);
+        }
+      } catch (err) {
+        if (active) {
+          setError(String(err));
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    }
+    
+    const timer = setTimeout(() => {
+      fetchCustomDetections();
+    }, 250);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [selectedTypes, minPriority, customCategory, customProduct, limit]);
+
   return (
     <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
-      <Panel title="Safe Detection Builder">
-        <div className="space-y-4 text-sm text-slate-300">
-          <div className="rounded-lg border border-line bg-ink/40 p-4">
-            Generates Sigma-style hunting stubs from prioritized CVEs, ATT&CK techniques, and indicators.
+      <Panel title="Sigma Detection Builder 2.0">
+        <div className="space-y-5 text-sm text-slate-300">
+          <div className="rounded-lg border border-line bg-ink/40 p-4 leading-relaxed text-slate-400 text-xs">
+            Generate customized, context-aware Sigma rules dynamically from crawled Threat Intel findings.
           </div>
-          <div className="rounded-lg border border-amberx/30 bg-amberx/10 p-4 text-amber-100">
-            Rules are marked experimental and require tuning before operational use.
+
+          {/* 1. Target Threat Categories */}
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 mb-2 tracking-wider">TARGET THREAT TYPES</label>
+            <div className="space-y-2">
+              {[
+                { id: "cve", label: "Vulnerabilities (CVEs)" },
+                { id: "attack_technique", label: "ATT&CK Techniques" },
+                { id: "domain", label: "Malicious Domains" },
+                { id: "ip", label: "Malicious IPs" },
+                { id: "url", label: "Malicious URLs" },
+              ].map(type => (
+                <label key={type.id} className="flex items-center gap-2 cursor-pointer select-none text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={selectedTypes.includes(type.id)}
+                    onChange={() => toggleType(type.id)}
+                    className="rounded border-line bg-ink text-cyanx focus:ring-cyanx"
+                  />
+                  {type.label}
+                </label>
+              ))}
+            </div>
           </div>
-          <button onClick={() => download("sigma_hunts.yml", detections, "text/yaml")} className="rounded-lg bg-cyanx px-3 py-2 font-semibold text-ink hover:bg-sky-300">
-            Download Sigma Hunts
+
+          {/* 2. Minimum Severity */}
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 mb-1.5 tracking-wider">MINIMUM SEVERITY</label>
+            <select
+              value={minPriority}
+              onChange={(e) => setMinPriority(e.target.value as any)}
+              className="w-full rounded-lg border border-line bg-panel px-3 py-2 text-sm text-slate-200"
+            >
+              <option value="low">Low Severity & Above</option>
+              <option value="medium">Medium Severity & Above</option>
+              <option value="high">High Severity & Above</option>
+              <option value="critical">Critical Severity Only</option>
+            </select>
+          </div>
+
+          {/* 3. Logsource Overrides */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 mb-1 tracking-wider">OVERRIDE CATEGORY</label>
+              <input
+                type="text"
+                value={customCategory}
+                onChange={(e) => setCustomCategory(e.target.value)}
+                placeholder="e.g. process_creation"
+                className="w-full rounded-lg border border-line bg-panel px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-cyanx"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 mb-1 tracking-wider">OVERRIDE PRODUCT</label>
+              <input
+                type="text"
+                value={customProduct}
+                onChange={(e) => setCustomProduct(e.target.value)}
+                placeholder="e.g. windows"
+                className="w-full rounded-lg border border-line bg-panel px-3 py-1.5 text-xs text-slate-200 outline-none focus:border-cyanx"
+              />
+            </div>
+          </div>
+
+          {/* 4. Rule Limit */}
+          <div>
+            <label className="block text-[10px] font-bold text-slate-400 mb-1.5 tracking-wider">MAXIMUM RULES LIMIT ({limit})</label>
+            <input
+              type="range"
+              min={1}
+              max={30}
+              value={limit}
+              onChange={(e) => setLimit(Number(e.target.value))}
+              className="w-full accent-cyanx"
+            />
+          </div>
+
+          <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4 text-xs text-amber-800 leading-relaxed font-medium">
+            Note: Generated Sigma stubs are marked experimental and require testing/tuning against your internal SIEM schema before deploying.
+          </div>
+
+          <button
+            onClick={() => download("sigma_hunts.yml", renderedRules, "text/yaml")}
+            className="w-full flex justify-center items-center gap-2 rounded-lg bg-cyanx px-4 py-2.5 font-bold text-ink hover:bg-sky-300 transition"
+          >
+            <Download className="h-4 w-4" />
+            Download Sigma Rules
           </button>
         </div>
       </Panel>
+
       <Panel title="Sigma Hunting Preview">
-        <pre className="max-h-[75vh] overflow-auto whitespace-pre-wrap text-xs leading-relaxed text-slate-300 scrollbar-thin">{detections}</pre>
+        <div className="relative">
+          {loading && (
+            <div className="absolute inset-0 bg-panel/70 flex items-center justify-center rounded-lg z-10">
+              <div className="w-8 h-8 border-4 border-cyanx border-t-transparent rounded-full animate-spin"></div>
+            </div>
+          )}
+          {error && (
+            <div className="mb-3 rounded-lg border border-danger/30 bg-danger/10 p-3 text-xs text-danger-200">
+              Failed to compile: {error}
+            </div>
+          )}
+          <pre className="max-h-[75vh] overflow-auto whitespace-pre-wrap text-xs leading-relaxed text-slate-800 bg-slate-50 border border-slate-200 p-4 rounded-xl scrollbar-thin font-mono shadow-inner">
+            {renderedRules}
+          </pre>
+        </div>
       </Panel>
     </div>
   );
