@@ -1,52 +1,82 @@
-# Walkthrough - CTI Analyst Chat Implementation
+# Walkthrough - Knowledge Graph 2.0 Hardening
 
-We have successfully implemented the CTI Analyst Chat feature, allowing analysts to query threat intelligence context from the local SQLite database via a retrieval-augmented LLM interface.
+We have completed the presentation-risk hardening for CTI Knowledge Graph 2.0. All remaining issues identified from the database review have been resolved.
 
 ## Changes Made
 
-### 1. Backend Chat Retrieval Module
-- Created [retrieval.py](file:///home/respectthanh/Workspace/vsc/pentest_project/cti_pipeline/chat/retrieval.py).
-- Extracted security entities (CVE, IP, domain, hash, ATT&CK technique) from questions.
-- Implemented simple but effective keyword and entity lookup against documents, entities, and sources.
-- Structured retrieval context returning priority findings, source mix, trends, and matching documents (with 1200-character compact body excerpts).
+### 1. Backend (`semantic.py`)
+- **Type-Aware Analyst Takeaways**: Implemented specialized takeaways based on focus entity types (vendor, product, CVE, package, platform domain, script/path artifact, abused hosting, reference domain, and actual IOC).
+- **Reference/Path Exclusions**: Restricted the global evaluation of malicious flag takeaways, evaluating direct edges to the focus entity, and mapping platform domains (`abuse.ch`) and path artifacts (`bin.sh`) to info/reference takeaways.
+- **PhishTank Grouping Metadata**: Updated grouped PhishTank documents to correctly accumulate `source_count`, `source_types`, and populate `first_seen`/`last_seen` timestamps on virtual edges.
+- **High-Fanout Visual Aggregation**: Enabled aggregation for `vendor` and `product` entities with $>12$ evidence documents. Only the top 12 individual documents are rendered, and the rest are grouped into virtual nodes by source name and year. Similarly, CVEs unique to grouped documents are collapsed into a `"Grouped CVEs (Year)"` node. Complete evidence-bound triples are maintained in the API response.
+- **symfony.com Noise Suppression**: Filtered out generic `MENTIONS` and `CO_OCCURS` edges from the visual graph for reference domains unless they connect to a CVE, package, or advisory. Package list in the analyst takeaway is also deduplicated.
 
-### 2. Backend Chat LLM Module
-- Created [chat.py](file:///home/respectthanh/Workspace/vsc/pentest_project/cti_pipeline/llm/chat.py).
-- Defined structured request and response formats via Pydantic (`ChatCitation`, `ChatRelatedEntity`, `ChatResponse`).
-- Implemented a conversational interface that passes the retrieved context as system instructions.
-- Guided the assistant to operate as a defensive CTI analyst (cites evidence, lists caveats, includes follow-ups, handles weak evidence, and avoids offensive exploitation steps).
-
-### 3. FastAPI Endpoint
-- Modified [main.py](file:///home/respectthanh/Workspace/vsc/pentest_project/cti_pipeline/api/main.py) to add `POST /api/chat`.
-- Validated request structure and handled clean errors (HTTP 400 for disabled/unconfigured LLM, HTTP 500 for internal errors).
-
-### 4. Frontend Client Update
-- Added the `chat` method to `api` in [api.ts](file:///home/respectthanh/Workspace/vsc/pentest_project/frontend/src/api.ts).
-
-### 5. Frontend UI Page
-- Added the `"chat"` view and navigation item in [App.tsx](file:///home/respectthanh/Workspace/vsc/pentest_project/frontend/src/App.tsx).
-- Implemented a rich two-column layout:
-  - Left column: Chat window and transcript.
-  - Right column: Quick suggested analyst queries, citations, caveats, and related entities.
-  - LLM configuration warning banner when environment values are missing.
+### 2. Frontend (`types.ts` & `App.tsx`)
+- Extended `SemanticGraphResponse` TypeScript definition to support `total_evidence_count`, `displayed_evidence_count`, and `aggregation_applied` summary fields.
+- Updated the "Analyst Summary Takeaway" panel to display the evidence record count (`"Showing X of Y evidence records"`) and an `"Aggregation Active"` badge when visual aggregation is applied.
 
 ---
 
 ## Verification Results
 
-### 1. Automated Tests
-We added 3 comprehensive tests in [test_chat.py](file:///home/respectthanh/Workspace/vsc/pentest_project/tests/test_chat.py) and ran `pytest`. All 24 tests passed successfully:
+### Automated Tests
+Run pytest in the workspace root:
 ```bash
 python3 -m pytest tests
-============================== 24 passed in 8.03s ==============================
+# 34 passed in 6.95s
 ```
+All unit tests passed successfully, including the new unit test block `test_knowledge_graph_hardening_presentation_bugs` verifying our fixes.
 
-### 2. Frontend Production Build
-We verified that the React/TypeScript bundle builds successfully without compilation errors:
+### Real DB Probes Validation
+We ran validation probes against the live SQLite DB:
+
+1. **vendor Microsoft**
+   - Takeaway: `"Vendor Microsoft appears across CISA KEV evidence in sampled vulnerability records affecting products such as .NET Framework, Active Directory, Configuration Manager and others. Prioritize review of active exploitation trends for Microsoft software."`
+   - Metrics: `Nodes: 59, Edges: 102, Triples: 159`
+   - Focus Risk: `medium`
+   - Aggregation Applied: `True`
+
+2. **product Windows**
+   - Takeaway: `"Product Windows appears across sampled CISA KEV vulnerability records associated with Microsoft. Prioritize patch validation for actively exploited Windows CVEs."`
+   - Metrics: `Nodes: 46, Edges: 90, Triples: 160`
+   - Focus Risk: `medium`
+   - Aggregation Applied: `True`
+
+3. **domain symfony.com**
+   - Takeaway: `"Domain symfony.com is identified as a reference or software project domain in collected CTI Security Advisories. It is not classified as malicious infrastructure."`
+   - Metrics: `Nodes: 24, Edges: 32, Triples: 41`
+   - Focus Risk: `info`
+   - Aggregation Applied: `True`
+
+4. **domain abuse.ch**
+   - Takeaway: `"abuse.ch is a CTI platform/reference domain observed in ThreatFox/abuse.ch evidence, not the malicious IOC itself."`
+   - Metrics: `Nodes: 21, Edges: 22, Triples: 48`
+   - Focus Risk: `info`
+   - Aggregation Applied: `True`
+
+5. **domain bin.sh**
+   - Takeaway: `"bin.sh appears to be a script/path artifact extracted from malware URLs; the actual observed infrastructure is the host/IP/full URL, not bin.sh as a standalone domain."`
+   - Metrics: `Nodes: 14, Edges: 21, Triples: 120`
+   - Focus Risk: `info`
+   - Aggregation Applied: `True`
+   - Selected Edges Predicates: `['CONTAINS_PATH_ARTIFACT']`
+
+6. **domain weebly.com**
+   - Takeaway: `"Domain weebly.com is an abused hosting platform observed in phishing campaigns; the infrastructure is shared, hosting legitimate content alongside malicious URLs."`
+   - Metrics: `Nodes: 18, Edges: 17, Triples: 17`
+   - Focus Risk: `info`
+   - Aggregation Applied: `False`
+
+7. **ip 45.155.69.173** (Actual IOC)
+   - Takeaway: `"Malicious infrastructure indicator of compromise associated with malware family js.clearfake. Observed threat type: botnet_cc. Monitored nodes pose severe system intrusion risks."`
+   - Metrics: `Nodes: 4, Edges: 3, Triples: 3`
+   - Focus Risk: `high`
+   - Aggregation Applied: `False`
+
+### Frontend Build
+Vite built successfully:
 ```bash
-npm run build
-dist/index.html                   0.41 kB │ gzip:   0.27 kB
-dist/assets/index-kMxtvUla.css   17.51 kB │ gzip:   4.54 kB
-dist/assets/index-BlRPoG7G.js   614.36 kB │ gzip: 180.77 kB
-✓ built in 1.05s
+cd frontend && npm run build
+# Built in 775ms
 ```
+The large chunk warning is expected due to Vite's default threshold settings, but no typescript or compilation errors were reported.
